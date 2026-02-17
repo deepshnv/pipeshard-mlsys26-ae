@@ -85,7 +85,7 @@ public:
 
     // --- Tensor & Weight Management ---
     void pipeline_set_tensor_data(ggml_tensor * leaf, ggml_backend_t backend, bool is_async);
-    void prefetch_split_weights(const ExecutionPlan & plan, int split_id, int * last_idx);
+    void prefetch_split_weights(const ExecutionPlan & plan, int sched_split_id, int plan_split_id, int * last_idx);
 
     // --- KV Cache Management ---
     llama_kv_cache_unified * get_kv_cache_for_layer(int layer_num);

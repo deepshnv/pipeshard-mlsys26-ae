@@ -6031,8 +6031,10 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                 }
             }
             layer_to_tensor_map[layer_idx].push_back(cur);
-            cur->buffer = NULL;
-            cur->data = NULL;
+            if (pipe_shard) {
+                cur->buffer = NULL;
+                cur->data = NULL;
+            }
         }
     }
 

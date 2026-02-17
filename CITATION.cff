@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "<TITLE>"
+authors:
+  - family-names: "<LAST_NAME>"
+    given-names: "<FIRST_NAME>"
+    affiliation: "<AFFILIATION>"
+version: "<VERSION>"
+date-released: "<YYYY-MM-DD>"
+url: "<REPOSITORY_URL>"

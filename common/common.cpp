@@ -1165,7 +1165,7 @@ struct common_init_result common_init_from_existing_model(common_params & params
     }
 
     if (params.warmup) {
-        LOG_WRN("%s: warming up the model with an empty run\n", __func__);
+        LOG_WRN("%s: warming up the model with an empty run - please wait ... (--no-warmup to disable)\n", __func__);
         llama_set_warmup(lctx, true);
         std::vector<llama_token> tmp;
         llama_token bos = llama_vocab_bos(vocab);

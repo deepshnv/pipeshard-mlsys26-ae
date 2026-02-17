@@ -212,6 +212,22 @@ ggml_status PipelineExecutor::compute(ggml_cgraph * gf) {
     const ExecutionPlan & plan = *m_active_plan;
 
     const int n_splits = ggml_backend_sched_get_num_splits(m_ctx.sched.get());
+    const int n_plan_splits = (int)plan.pipeline_splits.size();
+
+    // Detect split offset between plan and runtime graph.
+    // The plan's pipeline_splits are built from a token-input graph during initialization.
+    // When running with embedding input (e.g., image tokens from CLIP), the token embedding
+    // CPU split is absent, causing the runtime to have fewer splits. We detect this and
+    // offset into the plan's splits so that plan metadata (KV layers, weights, backend type)
+    // correctly maps to each runtime split.
+    int plan_offset = 0;
+    if (!m_plan.single_plan_mode && n_splits < n_plan_splits) {
+        ggml_backend_t first_runtime_backend = ggml_backend_sched_get_split_backend(m_ctx.sched.get(), 0);
+        if (!ggml_backend_is_cpu(first_runtime_backend) &&
+            !plan.pipeline_splits.empty() && plan.pipeline_splits[0].backend_type == CPU) {
+            plan_offset = n_plan_splits - n_splits;
+        }
+    }
 
     const bool has_sharding = (plan.sharded_weights_vram_req > 0);
 
@@ -224,9 +240,14 @@ ggml_status PipelineExecutor::compute(ggml_cgraph * gf) {
     ggml_status err = GGML_STATUS_SUCCESS;
 
     for (int i = 0; i < n_splits; ++i) {
-        const auto & split = plan.pipeline_splits[i];
+        const int pi = i + plan_offset;
+        if (pi >= n_plan_splits) break;
+
+        const auto & split = plan.pipeline_splits[pi];
         const int next_i = i + 1;
-        const bool next_is_sharded = (next_i < n_splits) && (plan.pipeline_splits[next_i].backend_type == GPU_SHARDED);
+        const int next_pi = next_i + plan_offset;
+        const bool next_valid = (next_i < n_splits) && (next_pi < n_plan_splits);
+        const bool next_is_sharded = next_valid && (plan.pipeline_splits[next_pi].backend_type == GPU_SHARDED);
 
         // Step 1: CopyInputs
         err = ggml_backend_sched_compute_split_copy_inputs(m_ctx.sched.get(), i);
@@ -234,11 +255,11 @@ ggml_status PipelineExecutor::compute(ggml_cgraph * gf) {
 
         // Step 2: Queue next split's async ops (overlaps with Run)
         if (next_is_sharded) {
-            const auto & next_split = plan.pipeline_splits[next_i];
+            const auto & next_split = plan.pipeline_splits[next_pi];
             for (int layer_id : next_split.kv_layer_ids) {
                 pipeline_upload_kv_cells_for_seqs(layer_id, m_compute_seq_ids);
             }
-            prefetch_split_weights(plan, next_i, &last_copied_idx);
+            prefetch_split_weights(plan, next_i, next_pi, &last_copied_idx);
         }
 
         // Step 3: Run computation
@@ -263,19 +284,23 @@ ggml_status PipelineExecutor::compute(ggml_cgraph * gf) {
 }
 
 // Simple prefetch helper
-void PipelineExecutor::prefetch_split_weights(const ExecutionPlan & plan, int split_id, int * last_idx) {
-    if (split_id <= *last_idx) return;
+// sched_split_id: index into the scheduler's runtime splits (for backend query)
+// plan_split_id:  index into plan.pipeline_splits (for leaf tensor access)
+void PipelineExecutor::prefetch_split_weights(const ExecutionPlan & plan, int sched_split_id, int plan_split_id, int * last_idx) {
+    if (plan_split_id <= *last_idx) return;
     
-    ggml_backend_t backend = ggml_backend_sched_get_split_backend(m_ctx.sched.get(), split_id);
+    ggml_backend_t backend = ggml_backend_sched_get_split_backend(m_ctx.sched.get(), sched_split_id);
     if (ggml_backend_is_cpu(backend)) {
-        *last_idx = split_id;
+        *last_idx = plan_split_id;
         return;
     }
     
-    for (ggml_tensor * leaf : plan.pipeline_splits[split_id].leafs) {
-        pipeline_set_tensor_data(leaf, backend, true);  // async
+    if (plan_split_id < (int)plan.pipeline_splits.size()) {
+        for (ggml_tensor * leaf : plan.pipeline_splits[plan_split_id].leafs) {
+            pipeline_set_tensor_data(leaf, backend, true);  // async
+        }
     }
-    *last_idx = split_id;
+    *last_idx = plan_split_id;
 }
 
 void PipelineExecutor::set_scratch_offsets(){
