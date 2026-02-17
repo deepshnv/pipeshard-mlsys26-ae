@@ -28,40 +28,33 @@
 #include <numeric>
 #include <functional>
 
-// Multiplier for scheduler node capacity when tiled-attention is enabled.
-// Override via env var: MTMD_CLIP_VTO_TILED_GRAPH_SIZE_MULTIPLIER
-static int get_vto_tiled_graph_size_multiplier() {
+// Fixed multiplier for scheduler/graph node capacity when tiled-attention is enabled.
+// 200x covers all practical image resolutions and tile configurations.
+static constexpr int VTO_TILED_GRAPH_SIZE_MULTIPLIER = 200;
+
+// CLIP vision encoder Flash-Attention control via MTMD_CLIP_FLASH_ATTN:
+//   0 or unset = disabled
+//   1          = full FA (skip tiled-Q, use FA for entire sequence)
+//   2          = tiled FA (FA enabled, tiled-Q still applies when needed)
+static int mtmd_clip_fa_level() {
     static int cached = -1;
     if (cached != -1) return cached;
-    const int default_mult = 100;
-    const char * env = std::getenv("MTMD_CLIP_VTO_TILED_GRAPH_SIZE_MULTIPLIER");
+    const char * env = std::getenv("MTMD_CLIP_FLASH_ATTN");
     if (env != NULL && env[0] != '\0') {
-        long long v = std::atoll(env);
-        if (v > 0 && v <= (long long) std::numeric_limits<int>::max()) {
-            cached = (int) v;
-            return cached;
-        }
+        cached = std::atoi(env);
+        if (cached < 0 || cached > 2) cached = 0;
+    } else {
+        cached = 0;
     }
-    cached = default_mult;
     return cached;
 }
 
-// Enable full Flash-Attention for CLIP vision encoder via env var
 static bool mtmd_clip_use_full_flash_attn() {
-    static int cached = -1;
-    if (cached != -1) return cached == 1;
-    const char * env = std::getenv("MTMD_CLIP_FULL_FLASH_ATTN");
-    cached = (env != NULL && env[0] != '\0' && env[0] != '0') ? 1 : 0;
-    return cached == 1;
+    return mtmd_clip_fa_level() == 1;
 }
 
 static bool mtmd_clip_flash_attn_enabled() {
-    if (mtmd_clip_use_full_flash_attn()) return true;
-    static int cached = -1;
-    if (cached != -1) return cached == 1;
-    const char * env = std::getenv("MTMD_CLIP_FLASH_ATTN");
-    cached = (env != NULL && env[0] != '\0' && env[0] != '0') ? 1 : 0;
-    return cached == 1;
+    return mtmd_clip_fa_level() >= 1;
 }
 
 struct clip_logger_state g_logger_state = {GGML_LOG_LEVEL_CONT, clip_log_callback_default, NULL};
@@ -463,9 +456,7 @@ struct clip_ctx {
         backend_buft.push_back(ggml_backend_get_default_buffer_type(backend_cpu));
 
         // use larger scheduler node capacity when tiled-q is enabled
-        int sched_max_nodes = ctx_params.vto_tiled_attention
-            ? (int)((size_t) max_nodes * get_vto_tiled_graph_size_multiplier())
-            : max_nodes;
+        int sched_max_nodes = ctx_params.vto_tiled_attention ? (int)((size_t) max_nodes * VTO_TILED_GRAPH_SIZE_MULTIPLIER) : max_nodes;
         sched.reset(
             ggml_backend_sched_new(backend_ptrs.data(), backend_buft.data(), backend_ptrs.size(), sched_max_nodes, false, true, false)
         );
@@ -536,7 +527,7 @@ struct clip_graph {
         ctx0 = ctx0_ptr.get();
         // enlarge graph when vto_tiled_attention creates more nodes
         size_t graph_size_hint = ctx->vto_tiled_attention
-            ? (size_t) ctx->max_nodes * (size_t) get_vto_tiled_graph_size_multiplier()
+            ? (size_t) ctx->max_nodes * (size_t) VTO_TILED_GRAPH_SIZE_MULTIPLIER
             : (size_t) ctx->max_nodes;
         gf = ggml_new_graph_custom(ctx0, graph_size_hint, /*grads*/ false);
     }
@@ -766,6 +757,16 @@ struct clip_graph {
             inpL = ggml_reshape_2d(ctx0, inpL, n_embd * 4, n_patches_x * n_patches_y * batch_size / 4);
             inpL = ggml_get_rows(ctx0, inpL, inv_window_idx);
             inpL = ggml_reshape_3d(ctx0, inpL, n_embd, n_patches_x * n_patches_y, batch_size);
+        }
+
+        // VTO: overhead constants for tiled attention budget computation
+        const size_t non_attn_tensor_overheads_4k = 3543348019;
+        const size_t fa_attn_tensor_overheads_4k  = 7516192768;
+        double       img_ratio_wrt_4k             = (img.nx / 4032.0) * (img.ny / 2240.0);
+        bool         use_fa                       = mtmd_clip_flash_attn_enabled();
+        bool         warmup_pass                  = false;
+        if (img.nx <= 448 && img.ny <= 448) {
+            warmup_pass = true;
         }
 
         // loop over layers
@@ -3016,7 +3017,7 @@ struct clip_model_loader {
         const auto & hparams = ctx_clip.model.hparams;
         // tiled-q creates more nodes; enlarge buffer accordingly
         size_t desired_nodes = ctx_clip.vto_tiled_attention
-            ? (size_t) ctx_clip.max_nodes * (size_t) get_vto_tiled_graph_size_multiplier()
+            ? (size_t) ctx_clip.max_nodes * (size_t) VTO_TILED_GRAPH_SIZE_MULTIPLIER
             : (size_t) ctx_clip.max_nodes;
         ctx_clip.buf_compute_meta.resize(ggml_tensor_overhead()*desired_nodes + ggml_graph_overhead_custom(desired_nodes, /*grads*/ false));
 
@@ -3414,7 +3415,9 @@ struct image_manipulation {
     // calculate the size of the **resized** image, while preserving the aspect ratio
     // the calculated size will be aligned to the nearest multiple of align_size
     // if H or W size is larger than max_dimension, it will be resized to max_dimension
-    static clip_image_size calc_size_preserved_ratio(const clip_image_size & inp_size, const int align_size, const int max_dimension) {
+    // if using_fa_for_vit is true, each dimension is further aligned to align_size*8
+    //   so that the KV sequence length (n_patches) is a multiple of 256 as required by CUDA FA
+    static clip_image_size calc_size_preserved_ratio(const clip_image_size & inp_size, const int align_size, const int max_dimension, bool using_fa_for_vit = false) {
         if (inp_size.width <= 0 || inp_size.height <= 0 || align_size <= 0 || max_dimension <= 0) {
             return {0, 0};
         }
@@ -3427,6 +3430,14 @@ struct image_manipulation {
 
         int aligned_width  = CLIP_ALIGN((int)target_width_f,  align_size);
         int aligned_height = CLIP_ALIGN((int)target_height_f, align_size);
+
+        if (using_fa_for_vit) {
+            // CUDA FA requires the KV sequence length to be a multiple of FATTN_KQ_STRIDE=256.
+            // Here align_size == patch_size * 2, so aligning each dimension to align_size * 8
+            // ensures (W/patch_size) * (H/patch_size) is a multiple of 256 (16*16).
+            aligned_width  = CLIP_ALIGN(aligned_width,  align_size * 8);
+            aligned_height = CLIP_ALIGN(aligned_height, align_size * 8);
+        }
 
         return {aligned_width, aligned_height};
     }
@@ -3766,7 +3777,8 @@ bool clip_image_preprocess(struct clip_ctx * ctx, const clip_image_u8 * img, str
     } else if (ctx->proj_type() == PROJECTOR_TYPE_QWEN2VL || ctx->proj_type() == PROJECTOR_TYPE_QWEN25VL) {
         clip_image_u8 resized;
         auto patch_size = params.patch_size * 2;
-        auto new_size = image_manipulation::calc_size_preserved_ratio(original_size, patch_size, params.image_size);
+        bool using_fa_for_vit = mtmd_clip_flash_attn_enabled();
+        auto new_size = image_manipulation::calc_size_preserved_ratio(original_size, patch_size, params.image_size, using_fa_for_vit);
         image_manipulation::bicubic_resize(*img, resized, new_size.width, new_size.height);
 
         clip_image_f32_ptr img_f32(clip_image_f32_init());
@@ -4134,7 +4146,7 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
     if (ctx->vto_offload_cpu || ctx->vto_tiled_attention)
     {
         int tmp_sched_nodes = ctx->vto_tiled_attention
-            ? (int)((size_t) ctx->max_nodes * get_vto_tiled_graph_size_multiplier())
+            ? (int)((size_t) ctx->max_nodes * VTO_TILED_GRAPH_SIZE_MULTIPLIER)
             : ctx->max_nodes;
         sched_local.reset(ggml_backend_sched_new(ctx->backend_ptrs.data(),
                                                  ctx->backend_buft.data(),
@@ -4192,6 +4204,32 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
         ggml_tensor * cur = get_inp_tensor(name);
         GGML_ASSERT(cur->type == GGML_TYPE_I32);
         GGML_ASSERT(ggml_nelements(cur) == (int64_t)values.size());
+        ggml_backend_tensor_set(cur, values.data(), 0, ggml_nbytes(cur));
+    };
+
+    // Optional setters: only set if the input tensor exists in the graph (needed for VTO path)
+    auto try_set_input_f32 = [&gf](const char * name, const std::vector<float> & values) {
+        ggml_tensor * cur = ggml_graph_get_tensor(gf, name);
+        if (!cur) return;
+        if (!(cur->flags & GGML_TENSOR_FLAG_INPUT)) return;
+        if (cur->type == GGML_TYPE_F32) {
+            if (ggml_nelements(cur) != (int64_t)values.size()) return;
+            ggml_backend_tensor_set(cur, values.data(), 0, ggml_nbytes(cur));
+        } else if (cur->type == GGML_TYPE_F16) {
+            if (ggml_nelements(cur) != (int64_t)values.size()) return;
+            std::vector<ggml_fp16_t> values_f16(values.size());
+            for (size_t i = 0; i < values.size(); i++) {
+                values_f16[i] = ggml_fp32_to_fp16(values[i]);
+            }
+            ggml_backend_tensor_set(cur, values_f16.data(), 0, ggml_nbytes(cur));
+        }
+    };
+    auto try_set_input_i32_vec = [&gf](const char * name, const std::vector<int> & values) {
+        ggml_tensor * cur = ggml_graph_get_tensor(gf, name);
+        if (!cur) return;
+        if (!(cur->flags & GGML_TENSOR_FLAG_INPUT)) return;
+        if (cur->type != GGML_TYPE_I32) return;
+        if (ggml_nelements(cur) != (int64_t)values.size()) return;
         ggml_backend_tensor_set(cur, values.data(), 0, ggml_nbytes(cur));
     };
 
@@ -4357,9 +4395,9 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
                         }
                     }
 
-                    set_input_i32("window_idx",     idx);
-                    set_input_i32("inv_window_idx", inv_idx);
-                    set_input_f32("window_mask",    mask);
+                    try_set_input_i32_vec("window_idx",     idx);
+                    try_set_input_i32_vec("inv_window_idx", inv_idx);
+                    try_set_input_f32    ("window_mask",    mask);
                 } else {
                     for (int i = 0; i < ph * pw; i++) {
                         idx[i] = i;

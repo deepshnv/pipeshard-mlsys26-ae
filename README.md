@@ -596,6 +596,25 @@ $ echo "source ~/.llama-completion.bash" >> ~/.bashrc
 ## Pipeline Sharding (PipeShard)
 
 Pipeline sharding enables running large models that exceed VRAM by scheduling layers across GPU and CPU with concurrent PCIe transfers.
+VLMOpt provides complementary VRAM-reduction optimizations for the vision encoder so that high-resolution VLM inference.
+**MLSys26 Paper:** [EFFICIENT, VRAM-CONSTRAINED XLM INFERENCE ON CLIENTS](https://mlsys26.hotcrp.com/doc/mlsys26-paper1080.pdf)
+
+
+### Requirements
+
+1. **Hardware**: An x86_64 machine with a discrete GPU (preferably an NVIDIA RTX series GPU).
+
+2. **NVIDIA Driver & CUDA Toolkit** (for NVIDIA GPUs):
+   - Install the latest **Game Ready Driver** (GRD) from [NVIDIA Driver Downloads](https://www.nvidia.com/Download/index.aspx):
+     1. Select your GPU product, OS, and "Game Ready Driver" download type.
+     2. Download and run the installer; a reboot may be required.
+     3. Verify with `nvidia-smi` in a terminal.
+   - Install **CUDA Toolkit 12.8+** from [CUDA Toolkit Downloads](https://developer.nvidia.com/cuda-downloads):
+     1. Select your OS, architecture, and installer type (recommended: network installer).
+     2. Run the installer and follow the on-screen prompts (the default options are fine).
+     3. Ensure `nvcc` is on your PATH. Verify with `nvcc --version`.
+
+3. *(Optional, Windows)* **Visual Studio 2022+** — needed for the MSVC compiler and CMake generator on Windows. Install from [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) and select the **"Desktop development with C++"** workload during setup.
 
 ### Step 1: Build
 
@@ -638,19 +657,91 @@ The profilers generate benchmark data (`concurrent_results.txt` and `gpu_results
 ./gpu_profiler --cold
 ```
 
-### Step 4: Run Inference
+### Step 4: Run Text-Only Inference
 
 ```bash
-./llama-cli -m model.gguf -c 4096 -n 256 -ub 1024 -mva 1500 -pipe-shard \
-    --temp 0.0 -no-cnv --no-display-prompt
+./llama-cli -m <model.gguf> -c <context> -n <max_tokens> -ub <ubatch> \
+    -mva <vram_mb> -pipe-shard --temp 0.0 -no-cnv --no-display-prompt
 ```
 
-**Example:**
+**Example (Qwen3-4B, text-only):**
 
 ```bash
 ./llama-cli -m Qwen3-4B-Q4_0.gguf -c 4096 --file prompt-1k.txt \
     --temp 0.0 -no-cnv -n 256 --no-display-prompt \
     -ub 1024 -mva 1500 -pipe-shard
+```
+
+### Step 5: Run Multimodal / VLM Inference
+
+For vision-language models, use `llama-mtmd-cli` with the `--mmproj` projector file and VLMOpt flags to keep VRAM usage low during CLIP encoding.
+
+**Set VLMOpt environment variable** (recommended for high-resolution images):
+
+The `MTMD_CLIP_FLASH_ATTN` variable controls Flash Attention inside the CLIP vision encoder. Mode `2` (tiled FA) is strongly recommended for large image resolutions (`-cis` above ~2000).
+
+| Variable | Values | Description |
+|----------|--------|-------------|
+| `MTMD_CLIP_FLASH_ATTN` | `0` (default), `1`, `2` | `0` = disabled, `1` = full FA (bypasses tiled-Q, one pass), `2` = tiled FA (FA within each tiled-Q chunk). |
+
+```bash
+# Linux/macOS
+export MTMD_CLIP_FLASH_ATTN=2
+
+# Windows (cmd)
+set MTMD_CLIP_FLASH_ATTN=2
+
+# Windows (PowerShell)
+$env:MTMD_CLIP_FLASH_ATTN = "2"
+```
+
+```bash
+./llama-mtmd-cli \
+    -m <llm.gguf> --mmproj <projector.gguf> \
+    -p "<prompt>" --image <image_path> \
+    -c <context> -n <max_tokens> -b <batch> -ub <ubatch> \
+    -mva <vram_mb> -pipe-shard \
+    -vto-offload-cpu -vto-tiled-attention -clip-tiled-mb <budget_mb> \
+    [--chat-template <template>] [-cis <max_dim>] [-fes <strategy>]
+```
+
+**Example (Cosmos-Reason1-7B, image captioning):**
+
+```bash
+./llama-mtmd-cli \
+    -m Cosmos_Reason1_7B.gguf \
+    --mmproj mmproj_Cosmos_Reason1_7B.gguf \
+    -p "Describe what is happening in this image in under 100 words." \
+    --image photo.jpg \
+    -c 12000 -n 100 -b 2048 -ub 2048 -mva 3500 -pipe-shard \
+    -vto-offload-cpu -vto-tiled-attention -clip-tiled-mb 12000 -cis 3840
+```
+
+**Example (Qwen2.5-VL-7B, image captioning):**
+
+```bash
+./llama-mtmd-cli \
+    -m Qwen2.5-VL-7B-Instruct-q8_0.gguf \
+    --mmproj Qwen2.5-VL-7B-Instruct-mmproj-bf16.gguf \
+    -p "Describe what is happening in this image in under 100 words." \
+    --image photo.jpg \
+    -c 12000 -n 100 -b 2048 -ub 2048 -mva 3500 -pipe-shard \
+    -vto-offload-cpu -vto-tiled-attention -clip-tiled-mb 12000 -cis 3840
+```
+
+**Example (NemoVision-4B, image captioning):**
+
+> **Note:** NemoVision requires `--chat-template vicuna` and `-fes 4` (force FULL_SHARD strategy) under constrained VRAM with pipeline sharding. Without `-fes 4`
+
+```bash
+./llama-mtmd-cli \
+    -m minitron.gguf \
+    --mmproj mmproj-model-f16.gguf \
+    -p "Describe what is happening in this image in under 100 words." \
+    --image photo.jpg \
+    -c 8000 -n 100 -b 2048 -ub 2048 -mva 3500 -pipe-shard \
+    -vto-offload-cpu -vto-tiled-attention -clip-tiled-mb 5000 \
+    --chat-template vicuna -fes 4
 ```
 
 ### PipeShard CLI Flags
@@ -660,9 +751,72 @@ The profilers generate benchmark data (`concurrent_results.txt` and `gpu_results
 | `-pipe-shard` | Enable pipeline sharding |
 | `-mva N` | Max VRAM allocation budget in MB |
 | `-psa N` | Pinned system memory allocation in GB (0 = auto) |
-| `-fes N` | Force execution strategy (-1 = auto, 0-4 = specific) |
+| `-fes N` | Force execution strategy (`-1` = auto, `0` = FULL_GPU, `1` = FULL_GPU_NO_OUTPUT, `2` = STATIC_ATTN_PRIO, `3` = SHARD_ATTN_PRIO, `4` = FULL_SHARD) |
 | `--cpu-profile PATH` | Path to CPU benchmark profile (default: `concurrent_results.txt`) |
 | `--gpu-profile PATH` | Path to GPU benchmark profile (default: `gpu_results.txt`) |
+
+### VLMOpt CLI Flags
+
+These flags control vision encoder (CLIP) VRAM optimizations in `llama-mtmd-cli`. They enable high-resolution VLM inference within tight VRAM budgets by offloading and tiling the vision encoder independently of the LLM pipeline.
+
+| Flag | Description |
+|------|-------------|
+| `-vto-offload-cpu` | Offload all CLIP vision encoder weights to CPU. Weights are streamed to GPU on demand during encoding, freeing VRAM for the LLM. Recommended when VRAM is constrained. |
+| `-vto-tiled-attention` | Reduce peak VRAM of the O(N^2) QK and QKV attention tensors inside the vision encoder by processing the Q matrix in smaller tiles. Prevents large transient allocations that can exceed VRAM during high-resolution image encoding. |
+| `-clip-tiled-mb N` | VRAM budget (in MiB) for CLIP tiled-Q attention. Controls the tile size: larger values use fewer, bigger tiles (faster); smaller values reduce peak VRAM further but increase encoding passes. Typical range: 2000-12000 MiB. |
+| `-cis N` / `-clip-img-size N` | Override the maximum image dimension fed to the vision encoder. Models like Qwen2.5-VL benefit from native-resolution input; set this to the image's longer side (e.g., `3840` for 4K). Default: model-defined (typically 336 or 384). |
+
+> **Note:** When using large image resolutions (e.g., `-cis 3840`), the standard (non-FA) attention path builds a full N x N attention mask that can exceed the 2 GB internal tensor size limit, causing an assertion failure during the CUDA copy operation. To avoid this, set `MTMD_CLIP_FLASH_ATTN=2` (tiled Flash Attention), which eliminates the explicit mask tensor entirely and processes attention within each tiled-Q chunk using FA kernels instead.
+
+## Reproducing MLSys'26 Paper Results
+
+> This section provides step-by-step instructions for reproducing the main results presented in the paper.
+
+---
+
+### Step 1: Download Required Models
+
+All models must be placed in the `gguf_models/` directory before running any experiments.
+
+| Model | URL | Download Instructions |
+|-------|-----|----------------------|
+| `mistral-nemo-minitron-4b-128k-instruct-f16` | [NVIDIA ACE (4B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
+| `mistral-nemo-minitron-8b-128k-instruct-f16` | [NVIDIA ACE (8B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
+| `nemotron-vision-4b-instruct-f16` | N/A | N/A |
+| `Qwen3-30B-A3B-Instruct-2507-q4` | [Hugging Face (Q4_0)](https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf?download=true) | Click the URL to download the single GGUF file, place it in gguf_models/ |
+| `Qwen3-235B-A22B-Instruct-2507-q2_k` | [Hugging Face (Q2_K)](https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/tree/main/Q2_K) | `hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir gguf_models/Qwen3-235B-A22B` |
+| `Cosmos-Reason1` | [Hugging Face (7B-GGUF)](https://huggingface.co/deepshekhar03/Cosmos-Reason1-7B-GGUF/tree/main) | `hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir gguf_models/cosmos_reason1` |
+
+#### Setting Up the Hugging Face CLI
+
+The `hf download` commands above require Python 3.12+ and the HF Hub CLI. Create a venv and install:
+
+**Windows (PowerShell):**
+```powershell
+winget install Python.Python.3.12          # skip if already installed
+python -m venv hf_venv && .\hf_venv\Scripts\Activate.ps1
+```
+
+After installing the CLI (see below), you can download all models at once:
+```powershell
+.\download_models.ps1
+```
+> The script auto-creates `gguf_models/` subdirectories, downloads HF-hosted models via `hf download`, and prints instructions for the NVIDIA ACE models that require manual browser download.
+
+**Linux / macOS:**
+```bash
+# Ubuntu/Debian: sudo apt install -y python3.12 python3.12-venv
+# macOS:         brew install python@3.12
+python3.12 -m venv hf_venv && source hf_venv/bin/activate
+```
+
+**Then (all platforms):**
+```bash
+pip install huggingface_hub[cli]
+huggingface-cli login   # requires a token from https://huggingface.co/settings/tokens
+```
+
+---
 
 ## Dependencies
 

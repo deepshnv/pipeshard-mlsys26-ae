@@ -345,30 +345,6 @@ int32_t mtmd_helper_eval_chunks(mtmd_context * ctx,
 
     // VTO: pre-encode first IMAGE chunk so CLIP VRAM is freed before any llama_decode
     if (mtmd_preencode_enabled(ctx)) {
-        // Warm-up: run tiny dummy encode to pay backend cold-start cost
-        {
-            const uint32_t warm_w = 1, warm_h = 1;
-            std::vector<unsigned char> warm_pixels(3u * warm_w * warm_h, 0);
-            mtmd_bitmap * warm_bmp = mtmd_bitmap_init(warm_w, warm_h, warm_pixels.data());
-            if (warm_bmp) {
-                mtmd_input_text warm_text;
-                warm_text.text        = mtmd_default_marker();
-                warm_text.add_special = false;
-                warm_text.parse_special = false;
-                const mtmd_bitmap * bm_ptr = warm_bmp;
-                mtmd_input_chunks * warm_chunks = mtmd_input_chunks_init();
-                mtmd_tokenize(ctx, warm_chunks, &warm_text, &bm_ptr, 1);
-                for (size_t w = 0; w < mtmd_input_chunks_size(warm_chunks); w++) {
-                    auto wchunk = mtmd_input_chunks_get(warm_chunks, w);
-                    if (mtmd_input_chunk_get_type(wchunk) == MTMD_INPUT_CHUNK_TYPE_IMAGE) {
-                        (void) mtmd_encode_chunk(ctx, wchunk);
-                        break;
-                    }
-                }
-                mtmd_input_chunks_free(warm_chunks);
-                mtmd_bitmap_free(warm_bmp);
-            }
-        }
         LOG_INF("pre-encoding image (VTO enabled) before any text decode...\n");
         int32_t ret = mtmd_preencode_first_image(ctx, chunks);
         if (ret != 0) {
@@ -377,6 +353,13 @@ int32_t mtmd_helper_eval_chunks(mtmd_context * ctx,
         }
         // Invoke JIT LLM initialization after CLIP has freed VRAM
         mtmd_invoke_llm_init_if_needed(ctx);
+        // The JIT callback may have created a new llama_context (stored in mtmd_context).
+        // The lctx parameter we received was NULL before JIT init -- refresh it now so
+        // all subsequent chunk processing (text and image) uses the live context.
+        struct llama_context * jit_lctx = mtmd_get_llm_context(ctx);
+        if (jit_lctx) {
+            lctx = jit_lctx;
+        }
     }
 
     for (size_t i = 0; i < n_chunks; i++) {
