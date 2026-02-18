@@ -10,7 +10,10 @@
 
 build*/
 
-models/*
+models/
+gguf_models/
+paper_results/*_results.csv
+.git/
 
 /llama-cli
 /llama-quantize

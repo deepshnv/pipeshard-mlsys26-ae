@@ -22,7 +22,6 @@ function Ensure-Dir($path) {
 Ensure-Dir $ModelsRoot
 Ensure-Dir (Join-Path $ModelsRoot "minitron4B")
 Ensure-Dir (Join-Path $ModelsRoot "minitron8B")
-Ensure-Dir (Join-Path $ModelsRoot "nemovision4B")
 Ensure-Dir (Join-Path $ModelsRoot "Qwen3-30B-A3B")
 Ensure-Dir (Join-Path $ModelsRoot "Qwen3-235B-A22B")
 Ensure-Dir (Join-Path $ModelsRoot "cosmos_reason1")
@@ -44,11 +43,6 @@ Write-Host "[!] mistral-nemo-minitron-8b-128k-instruct-f16"
 Write-Host "    Manual download required. Open in browser:"
 Write-Host "    https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z"
 Write-Host "    Extract the .7z archive into: $ModelsRoot\minitron8B"
-Write-Host ""
-
-# --- 2. nemotron-vision-4b (placeholder - update later) ---
-Write-Host "[~] nemotron-vision-4b-instruct-f16"
-Write-Host "    Skipped (URL not yet available). Update this script when the model is released."
 Write-Host ""
 
 # --- 3. Qwen3-30B-A3B Q4_0 (single file direct download) ---
@@ -78,15 +72,10 @@ Write-Host "============================================="
 Write-Host " Download complete."
 Write-Host "============================================="
 Write-Host ""
-Write-Host "Manual steps remaining:"
-Write-Host "  1. Download and extract the two NVIDIA ACE .7z archives (see URLs above)."
-Write-Host "  2. Place nemotron-vision-4b weights when available."
-Write-Host ""
 Write-Host "Expected layout:"
 Write-Host "  gguf_models/"
-Write-Host "    minitron4B/          (manual)"
-Write-Host "    minitron8B/          (manual)"
-Write-Host "    nemovision4B/        (pending)"
+Write-Host "    minitron4B/          mn-minitron-4b-128k-instruct-v2_f16.gguf"
+Write-Host "    minitron8B/          mn-minitron-8b-128k-instruct-v2_f16.gguf"
 Write-Host "    Qwen3-30B-A3B/      Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
 Write-Host "    Qwen3-235B-A22B/    Q2_K/*.gguf"
 Write-Host "    cosmos_reason1/     Cosmos_Reason1_7B.gguf + mmproj"

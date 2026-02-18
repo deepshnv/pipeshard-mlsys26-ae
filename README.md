@@ -597,7 +597,7 @@ $ echo "source ~/.llama-completion.bash" >> ~/.bashrc
 
 Pipeline sharding enables running large models that exceed VRAM by scheduling layers across GPU and CPU with concurrent PCIe transfers.
 VLMOpt provides complementary VRAM-reduction optimizations for the vision encoder so that high-resolution VLM inference.
-**MLSys26 Paper:** [EFFICIENT, VRAM-CONSTRAINED XLM INFERENCE ON CLIENTS](https://mlsys26.hotcrp.com/doc/mlsys26-paper1080.pdf)
+**MLSys26 Paper:** [EFFICIENT, VRAM-CONSTRAINED XLM INFERENCE ON CLIENTS](link arriving soon)
 
 
 ### Requirements
@@ -618,7 +618,7 @@ VLMOpt provides complementary VRAM-reduction optimizations for the vision encode
 
 ### Step 1: Build
 
-You can either **build from source** or **download pre-built release binaries**.
+You can **build from source**, **download pre-built release binaries**, or **use the Docker image**.
 
 #### Option A: Build from Source
 
@@ -629,7 +629,9 @@ cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF
 cmake --build build --config Release -j16
 ```
 
-The binaries will be placed in `build/bin/Release/` (Windows) or `build/bin/` (Linux/macOS).
+On Windows, the CMake configure step also generates a Visual Studio solution (`build/llama.cpp.sln`) that can be opened and built directly in Visual Studio. Binaries are placed in `build/bin/Release/` (Windows) or `build/bin/` (Linux/macOS).
+
+> All development and testing for our paper was done on Windows; we recommend Windows for the smoothest reproduction experience. That said, llama.cpp and our algorithmic changes are platform-independent and should build and run on Linux/macOS as well.
 
 #### Option B: Pre-built Release Binaries (Windows x86_64)
 
@@ -643,7 +645,60 @@ Invoke-WebRequest -Uri "https://github.com/deepshnv/pipeshard-mlsys26-ae/release
 Expand-Archive release.zip -DestinationPath build\bin\Release
 ```
 
-> **Note:** The pre-built binaries are linked against CUDA 12.9. You still need a compatible NVIDIA driver installed (see [Requirements](#requirements) above). If your CUDA version differs significantly, build from source using Option A.
+**Note:** The pre-built binaries are linked against CUDA 12.9. You still need a compatible NVIDIA driver installed (see [Requirements](#requirements) above). If your CUDA version differs significantly, build from source using Option A.
+
+#### Option C: Docker
+
+A pre-built Docker image with all dependencies and compiled binaries is available. This is the easiest way to get started -- no local build or dependency setup required.
+
+<details>
+<summary><strong>One-time setup: Docker + NVIDIA GPU support</strong></summary>
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (enable WSL 2 backend on Windows, restart after install).
+2. Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) inside WSL2:
+
+```bash
+wsl
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+```
+
+3. Restart Docker Desktop, then verify GPU access:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.9.0-base-ubuntu22.04 nvidia-smi
+```
+
+</details>
+
+**Pre-built Docker image (hosted on GitHub Container Registry, GHCR):**
+
+- Where it lives: https://ghcr.io/deepshnv/pipeshard-mlsys26-ae
+
+**To pull and run all reproduction scripts automatically:**
+
+```bash
+docker pull ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0
+
+# Mount your model weights directory; the container runs all 4 repro scripts (Table 4, 5, 8, Figure 2)
+docker run --gpus all -v /path/to/your/gguf_models:/workspace/gguf_models ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0
+```
+
+**Or run interactively** (to download models, run scripts individually, inspect results):
+
+```bash
+docker run --gpus all -it -v /path/to/your/gguf_models:/workspace/gguf_models ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0 bash
+
+# Inside the container:
+./download_models.sh                              # download models (if not mounted)
+./paper_results/repro_table4.sh                   # similarly run other scripts like repro_table5.sh, repro_table8.sh, repro_figure2.sh
+```
+
+> The Dockerfile is in the repository root for transparency. To rebuild locally: `docker build -t pipeshard-mlsys26-ae .`
 
 ### Step 2: Set Environment Variables
 
@@ -751,21 +806,6 @@ $env:MTMD_CLIP_FLASH_ATTN = "2"
     -vto-offload-cpu -vto-tiled-attention -clip-tiled-mb 12000 -cis 3840
 ```
 
-**Example (NemoVision-4B, image captioning):**
-
-> **Note:** NemoVision requires `--chat-template vicuna` and `-fes 4` (force FULL_SHARD strategy) under constrained VRAM with pipeline sharding. Without `-fes 4`
-
-```bash
-./llama-mtmd-cli \
-    -m minitron.gguf \
-    --mmproj mmproj-model-f16.gguf \
-    -p "Describe what is happening in this image in under 100 words." \
-    --image photo.jpg \
-    -c 8000 -n 100 -b 2048 -ub 2048 -mva 3500 -pipe-shard \
-    -vto-offload-cpu -vto-tiled-attention -clip-tiled-mb 5000 \
-    --chat-template vicuna -fes 4
-```
-
 ### PipeShard CLI Flags
 
 | Flag | Description |
@@ -793,6 +833,8 @@ These flags control vision encoder (CLIP) VRAM optimizations in `llama-mtmd-cli`
 ## Reproducing MLSys'26 Paper Results
 
 > This section provides step-by-step instructions for reproducing the main results presented in the paper.
+>
+> **Note on reproducibility:** Absolute performance numbers will vary across hardware; the relative speedups and directional trends should remain consistent.
 
 ---
 
@@ -804,7 +846,6 @@ All models must be placed in the `gguf_models/` directory before running any exp
 |-------|-----|----------------------|
 | `mistral-nemo-minitron-4b-128k-instruct-f16` | [NVIDIA ACE (4B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
 | `mistral-nemo-minitron-8b-128k-instruct-f16` | [NVIDIA ACE (8B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
-| `nemotron-vision-4b-instruct-f16` | N/A | N/A |
 | `Qwen3-30B-A3B-Instruct-2507-q4` | [Hugging Face (Q4_0)](https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf?download=true) | Click the URL to download the single GGUF file, place it in gguf_models/ |
 | `Qwen3-235B-A22B-Instruct-2507-q2_k` | [Hugging Face (Q2_K)](https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/tree/main/Q2_K) | `hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir gguf_models/Qwen3-235B-A22B` |
 | `Cosmos-Reason1` | [Hugging Face (7B-GGUF)](https://huggingface.co/deepshekhar03/Cosmos-Reason1-7B-GGUF/tree/main) | `hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir gguf_models/cosmos_reason1` |
@@ -842,6 +883,148 @@ chmod +x download_models.sh
 ```bash
 pip install huggingface_hub[cli]
 huggingface-cli login   # requires a token from https://huggingface.co/settings/tokens
+```
+
+---
+
+### Step 2: Reproduce Table 4 — TPS and TTFT under Pipelined Sharding
+
+> **Important — VRAM budget vs. physical VRAM:** The sweep includes budgets up to 32G. If your GPU has less physical VRAM (e.g., 8 GB, 12 GB), the higher budget columns will naturally show the same performance as your GPU's maximum, even on a 32 GB GPU, setting `-mva 32768` may over-subscribe usable VRAM (the OS and driver generally reserve ~1–2 GB), which can cause degraded performance this is expected and not a bug.
+
+Table 4 measures **tokens per second (TPS)** and **time to first token (TTFT)** for four text-only LLMs under pipeline sharding, sweeping across 4 context sizes (1K, 4K, 16K, 64K tokens) and 7 VRAM budgets (2G, 4G, 6G, 8G, 12G, 24G, 32G) for the models `minitron 4B fp16`, `minitron 8B fp16`, `Qwen3-30B-A3B Q4`, `Qwen3-235B-A22B Q2_K`
+
+The reproduction script automates the entire sweep: enables pipeline-sharding environment variables, runs the hardware profilers, executes all model/context/VRAM combinations, parses TPS and TTFT from the output logs, and writes a CSV summary to `paper_results/table4_results.csv`.
+
+**Windows (PowerShell):**
+```powershell
+cd pipeshard-mlsys26-ae
+.\paper_results\repro_table4.ps1
+```
+
+**Linux / macOS:**
+```bash
+cd pipeshard-mlsys26-ae
+chmod +x paper_results/repro_table4.sh
+./paper_results/repro_table4.sh
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-BinDir` / `--bin-dir` | Path to directory containing `llama-cli` and profiler executables (default: `./build/bin/Release` on Windows, `./build/bin` on Linux) |
+| `-ModelsDir` / `--models-dir` | Path to `gguf_models/` directory (default: `./gguf_models`) |
+| `-SkipProfiling` / `--skip-profiling` | Skip profiler runs and reuse existing `concurrent_results.txt` / `gpu_results.txt` |
+
+> **Note:** Models not found in `gguf_models/` are automatically skipped with a warning.
+
+---
+
+### Step 3: Reproduce Table 5 — TPS and TTFT at Peak VRAM Capacity
+
+Table 5 measures **TPS** and **TTFT** for the same four LLMs but at a single VRAM budget: the GPU's **peak usable capacity**. The paper reports results on two machines (cli2 at 16G and cli1 at 12G); the reproduction script lets you specify your GPU's peak VRAM so results are comparable on any hardware.
+
+**Windows (PowerShell):**
+```powershell
+cd pipeshard-mlsys26-ae
+.\paper_results\repro_table5.ps1 -PeakVramMB 30720
+```
+
+**Linux / macOS:**
+```bash
+cd pipeshard-mlsys26-ae
+chmod +x paper_results/repro_table5.sh
+./paper_results/repro_table5.sh --peak-vram-mb 12288
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-PeakVramMB` / `--peak-vram-mb` | Peak VRAM budget in MB (default: `30720` = 30G) |
+| `-BinDir` / `--bin-dir` | Path to directory containing `llama-cli` and profiler executables |
+| `-ModelsDir` / `--models-dir` | Path to `gguf_models/` directory |
+| `-SkipProfiling` / `--skip-profiling` | Skip profiler runs and reuse existing profiles |
+
+The output CSV (`paper_results/table5_results.csv`) contains columns: `Model, CtxSize, PeakVramMB, PeakVram, TPS, TTFT(msec)`. Compare against the reference in `paper_results/table5.png`.
+
+---
+
+### Step 4: Reproduce Table 8 — E2EL Speedups for VLM with PipeShard + VLMOpt
+
+Table 8 measures **end-to-end latency (E2EL) speedups** for the Cosmos-Reason1 VLM at 4 image resolutions (480p, 720p, 1080p, 1440p) using pipeline sharding combined with VLMOpt. For each resolution, a **baseline** run (no sharding, no VLMOpt) is compared against **VLMOpt** runs at 3 VRAM budgets (4G, 8G, 14.5G).
+
+The script:
+- Runs `llama-mtmd-cli` with the Cosmos-Reason1 model and a test image (`paper_results/dummy_image/165_4k.jpg`)
+- Varies the input resolution via `-cis` (640, 1280, 1920, 2560)
+- For each resolution: runs baseline first, then VLMOpt at each VRAM budget
+- Parses **image encode time**, **image decode time**, **TTFT**, **TPS** from the output
+- Computes **E2EL** = encode + decode + TTFT + (100 / TPS) for each run
+- Monitors **peak VRAM usage** via `nvidia-smi` in the background
+- Computes the **speedup**
+
+**Windows (PowerShell):**
+```powershell
+cd pipeshard-mlsys26-ae
+.\paper_results\repro_table8.ps1
+```
+
+**Linux / macOS:**
+```bash
+cd pipeshard-mlsys26-ae
+chmod +x paper_results/repro_table8.sh
+./paper_results/repro_table8.sh
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-VramBudgets` / `--vram-budgets` | Comma-separated VRAM budgets in MB (default: `4096,8192,14848` = 4G, 8G, 14.5G) |
+| `-ImagePath` / `--image-path` | Path to the test image (default: `paper_results/dummy_image/165_4k.jpg`) |
+| `-BinDir` / `--bin-dir` | Path to directory containing `llama-mtmd-cli` |
+| `-SkipProfiling` / `--skip-profiling` | Skip profiler runs |
+
+The output CSV (`paper_results/table8_results.csv`) contains columns: `Resolution, RunType, VramBudget, Encode(msec), Decode(msec), TTFT(msec), TPS, E2EL(msec), PeakVramMB, Speedup`. Compare the speedup values against the reference in `paper_results/table8.png`.
+
+---
+
+### Step 5: Reproduce Figure 2 -- TTFT/TPS/E2EL Speedups from Pipelined Sharding
+
+In the paper, each bar in Figure 2 represents the **best speedup** across ubatch sizes (1024, 2048) for a given (model, context, VRAM budget) triple.
+
+The baseline caps GPU layer offloading via `-ngl` (pre-profiled values from `benchmark_summary_5090_base.csv`, which depend only on ubatch and VRAM budget, not hardware). Pipeline sharding replaces this with a single `-mva` flag that automatically schedules layers across CPU and GPU.
+
+**Windows (PowerShell):**
+```powershell
+cd pipeshard-mlsys26-ae
+.\paper_results\repro_figure2.ps1 -MaxVramGB 31
+```
+
+**Linux / macOS:**
+```bash
+cd pipeshard-mlsys26-ae
+chmod +x paper_results/repro_figure2.sh
+./paper_results/repro_figure2.sh --max-vram-gb 31
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-MaxVramGB` / `--max-vram-gb` | Max available VRAM in GB on this machine; budgets exceeding this are skipped (default: `31`) |
+| `-BinDir` / `--bin-dir` | Path to directory containing `llama-cli` and profiler executables |
+| `-ModelsDir` / `--models-dir` | Path to `gguf_models/` directory |
+| `-SkipProfiling` / `--skip-profiling` | Skip profiler runs |
+
+> **Note:** This is the longest-running reproduction script (4 models x 4 contexts x 8 budgets x 2 ubatches = up to 256 paired runs). Use `-SkipProfiling` on subsequent runs to skip the hardware profiling step.
+
+The output CSV (`paper_results/figure2_results.csv`) contains per-run baseline and pipeline-sharded metrics (all times in msec) plus speedup columns: `TTFTSpeedup, TPSSpeedup, E2ELSpeedup`. The TTFT/TPS/E2EL speedup numbers should be in the same ballpark as Figure 2 in the paper.
+
+**(Optional) Generate the Figure 2 bar chart:**
+```bash
+pip install pandas matplotlib
+python paper_results/plot_figure2.py --csv paper_results/figure2_results.csv --out paper_results/figure2_repro.png
 ```
 
 ---
