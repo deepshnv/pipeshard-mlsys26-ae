@@ -37,6 +37,7 @@ RUN chmod +x download_models.sh \
     paper_results/repro_table4.sh \
     paper_results/repro_table5.sh \
     paper_results/repro_table8.sh \
+    paper_results/repro_table9.sh \
     paper_results/repro_figure2.sh
 
 VOLUME ["/workspace/gguf_models"]
@@ -51,16 +52,19 @@ CMD ["bash", "-c", "\
     echo '' && \
     echo '=== Running all reproduction scripts ===' && \
     echo '' && \
-    echo '--- Step 1/4: Table 4 ---' && \
+    echo '--- Step 1/5: Table 4 ---' && \
     ./paper_results/repro_table4.sh && \
     echo '' && \
-    echo '--- Step 2/4: Table 5 ---' && \
+    echo '--- Step 2/5: Table 5 ---' && \
     ./paper_results/repro_table5.sh --skip-profiling && \
     echo '' && \
-    echo '--- Step 3/4: Table 8 ---' && \
+    echo '--- Step 3/5: Table 8 ---' && \
     ./paper_results/repro_table8.sh --skip-profiling && \
     echo '' && \
-    echo '--- Step 4/4: Figure 2 ---' && \
+    echo '--- Step 4/5: Table 9 ---' && \
+    ./paper_results/repro_table9.sh --skip-profiling && \
+    echo '' && \
+    echo '--- Step 5/5: Figure 2 ---' && \
     ./paper_results/repro_figure2.sh --skip-profiling && \
     echo '' && \
     echo '=== All reproduction scripts complete ===' \

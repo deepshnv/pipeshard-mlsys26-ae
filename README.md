@@ -684,7 +684,7 @@ docker run --rm --gpus all nvidia/cuda:12.9.0-base-ubuntu22.04 nvidia-smi
 ```bash
 docker pull ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0
 
-# Mount your model weights directory; the container runs all 4 repro scripts (Table 4, 5, 8, Figure 2)
+# Mount your model weights directory; the container runs all 5 repro scripts (Table 4, 5, 8, 9, Figure 2)
 docker run --gpus all -v /path/to/your/gguf_models:/workspace/gguf_models ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0
 ```
 
@@ -695,7 +695,7 @@ docker run --gpus all -it -v /path/to/your/gguf_models:/workspace/gguf_models gh
 
 # Inside the container:
 ./download_models.sh                              # download models (if not mounted)
-./paper_results/repro_table4.sh                   # similarly run other scripts like repro_table5.sh, repro_table8.sh, repro_figure2.sh
+./paper_results/repro_table4.sh                   # similarly run other scripts like repro_table5.sh, repro_table8.sh, repro_table9.sh, repro_figure2.sh
 ```
 
 > The Dockerfile is in the repository root for transparency. To rebuild locally: `docker build -t pipeshard-mlsys26-ae .`
@@ -1026,6 +1026,35 @@ The output CSV (`paper_results/figure2_results.csv`) contains per-run baseline a
 pip install pandas matplotlib
 python paper_results/plot_figure2.py --csv paper_results/figure2_results.csv --out paper_results/figure2_repro.png
 ```
+
+---
+
+### Step 6: Reproduce Table 9 — TPS vs Multi-Request Batch Size across VRAM Budgets
+
+Table 9 measures **tokens per second (TPS)** for `Qwen3-30B-A3B Q4` with multi-request batching across 3 VRAM budgets (2G, 8G, 16G). "Batch size" here means the number of **parallel 1K-context requests** processed simultaneously (not larger context files). The script uses `-np <N>` for N parallel sequences and `-kvu` for unified KV cache, which the paper finds works best for pipelined sharding due to contiguous KV cache updates reducing copy overhead.
+
+**Windows (PowerShell):**
+```powershell
+cd pipeshard-mlsys26-ae
+.\paper_results\repro_table9.ps1
+```
+
+**Linux / macOS:**
+```bash
+cd pipeshard-mlsys26-ae
+chmod +x paper_results/repro_table9.sh
+./paper_results/repro_table9.sh
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-BinDir` / `--bin-dir` | Path to directory containing `llama-batched-bench` and profiler executables |
+| `-ModelsDir` / `--models-dir` | Path to `gguf_models/` directory |
+| `-SkipProfiling` / `--skip-profiling` | Skip profiler runs |
+
+The output CSV (`paper_results/table9_results.csv`) contains columns: `Model, VramBudget, VramMB, BatchSize, TPS`. TPS should generally increase with batch size at each VRAM budget. At 2G with 64 requests, both baseline and pipelined sharding struggle to fit tensors in VRAM, so performance may plateau or regress. Compare against the reference in `paper_results/table9.png`.
 
 ---
 
