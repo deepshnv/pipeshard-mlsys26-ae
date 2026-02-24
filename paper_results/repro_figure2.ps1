@@ -133,6 +133,15 @@ function Run-LlamaCli($cliArgs) {
     return @{ ExitCode = $exitCode; 'TTFT(msec)' = [math]::Round($ttftMs, 1); TPS = [math]::Round($tps, 2); 'E2EL(msec)' = [math]::Round($e2elMs, 1) }
 }
 
+# ── Detect GPU VRAM ──────────────────────────────────────────────────────────
+try {
+    $smiTotal = [int]((& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
+    $smiFree  = [int]((& nvidia-smi --query-gpu=memory.free  --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
+    Write-Host "[*] GPU has $([math]::Round($smiFree / 1024, 1)) GB free out of $([math]::Round($smiTotal / 1024, 1)) GB total. Using free VRAM as effective peak for this testing."
+} catch {
+    Write-Host "[!] nvidia-smi not available -- cannot detect GPU VRAM."
+}
+
 # ── Profiling ─────────────────────────────────────────────────────────────────
 if (-not $SkipProfiling) {
     Write-Host "============================================="

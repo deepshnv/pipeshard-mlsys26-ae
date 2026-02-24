@@ -34,7 +34,7 @@ fi
 MODEL_PATH="${MODELS_DIR}/Qwen3-30B-A3B/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
 [ ! -f "$MODEL_PATH" ] && echo "ERROR: Model not found: $MODEL_PATH" && exit 1
 
-MVA_VALUES=(2000 8000 16000)
+MVA_VALUES=(2048 8192 16384)
 NPL_CTX_PAIRS=(
     "1:1024"
     "4:4096"
@@ -45,6 +45,12 @@ NPL_CTX_PAIRS=(
 export GGML_CUDA_PIPELINE_SHARDING=1
 export GGML_CUDA_REGISTER_HOST=1
 echo "[*] Environment: GGML_CUDA_PIPELINE_SHARDING=1, GGML_CUDA_REGISTER_HOST=1"
+
+if command -v nvidia-smi &>/dev/null; then
+    _total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    _free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    echo "[*] GPU has $(awk "BEGIN{printf \"%.1f\", $_free/1024}") GB free out of $(awk "BEGIN{printf \"%.1f\", $_total/1024}") GB total. Using free VRAM as effective peak for this testing."
+fi
 
 if [ "$SKIP_PROFILING" = false ]; then
     echo "Running hardware profilers ..."

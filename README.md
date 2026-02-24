@@ -832,9 +832,13 @@ These flags control vision encoder (CLIP) VRAM optimizations in `llama-mtmd-cli`
 
 ## Reproducing MLSys'26 Paper Results
 
-> This section provides step-by-step instructions for reproducing the main results presented in the paper.
->
-> **Note on reproducibility:** Absolute performance numbers will vary across hardware; the relative speedups and directional trends should remain consistent.
+> **Note on reproducibility:** Absolute performance numbers will vary across hardware; the relative speedups and directional trends should remain consistent. For best results, close other GPU-intensive applications (browsers, game launchers, other ML workloads, etc.) before running benchmarks -- any process consuming VRAM reduces the budget available to pipeline sharding and can degrade performance.
+
+**One-command run all:** To run all 5 reproduction scripts sequentially (continues even if one fails):
+```powershell
+.\run_all_repro.ps1          # Windows
+chmod +x run_all_repro.sh && ./run_all_repro.sh   # Linux/macOS
+```
 
 ---
 
@@ -857,7 +861,7 @@ The `hf download` commands above require Python 3.12+ and the HF Hub CLI. Create
 **Windows (PowerShell):**
 ```powershell
 winget install Python.Python.3.12          # skip if already installed
-python -m venv hf_venv && .\hf_venv\Scripts\Activate.ps1
+python -m venv hf_venv; .\hf_venv\Scripts\Activate.ps1
 ```
 
 After installing the CLI (see below), you can download all models at once:

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Reproduces Table 9: TPS for various batch sizes (multi-request batches of 1K
     context each) on qwen30b across three VRAM budgets using pipelined sharding
@@ -44,7 +44,7 @@ if (-not (Test-Path $BatchedBench)) {
 $ModelPath = Join-Path (Join-Path $ModelsDir "Qwen3-30B-A3B") "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
 if (-not (Test-Path $ModelPath)) { Write-Error "Model not found: $ModelPath" }
 
-$VramBudgetsMB = @(2000, 8000, 16000)
+$VramBudgetsMB = @(2048, 8192, 16384)
 $NplCtxPairs   = @(
     @{ npl = 1;  ctx = 1024 },
     @{ npl = 4;  ctx = 4096 },
@@ -55,6 +55,14 @@ $NplCtxPairs   = @(
 $env:GGML_CUDA_PIPELINE_SHARDING = "1"
 $env:GGML_CUDA_REGISTER_HOST = "1"
 Write-Host "[*] Environment: GGML_CUDA_PIPELINE_SHARDING=1, GGML_CUDA_REGISTER_HOST=1"
+
+try {
+    $smiTotal = [int]((& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
+    $smiFree  = [int]((& nvidia-smi --query-gpu=memory.free  --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
+    Write-Host "[*] GPU has $([math]::Round($smiFree / 1024, 1)) GB free out of $([math]::Round($smiTotal / 1024, 1)) GB total. Using free VRAM as effective peak for this testing."
+} catch {
+    Write-Host "[!] nvidia-smi not available -- cannot detect GPU VRAM."
+}
 
 if (-not $SkipProfiling) {
     Write-Host "============================================="

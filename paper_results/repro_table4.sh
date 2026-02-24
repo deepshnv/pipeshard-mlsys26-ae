@@ -73,6 +73,12 @@ export GGML_CUDA_PIPELINE_SHARDING=1
 export GGML_CUDA_REGISTER_HOST=1
 echo "[*] Environment: GGML_CUDA_PIPELINE_SHARDING=1, GGML_CUDA_REGISTER_HOST=1"
 
+if command -v nvidia-smi &>/dev/null; then
+    _total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    _free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    echo "[*] GPU has $(awk "BEGIN{printf \"%.1f\", $_free/1024}") GB free out of $(awk "BEGIN{printf \"%.1f\", $_total/1024}") GB total. Using free VRAM as effective peak for this testing."
+fi
+
 # ── Step 1: Run profilers ─────────────────────────────────────────────────────
 if [ "$SKIP_PROFILING" = false ]; then
     echo ""

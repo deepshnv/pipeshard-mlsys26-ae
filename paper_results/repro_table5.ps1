@@ -18,8 +18,7 @@
     Path for the output CSV results file.
     Default: .\paper_results\table5_results.csv
 .PARAMETER PeakVramMB
-    Peak VRAM budget in MB. Set this to your GPU's usable VRAM.
-    Default: 30720 (30G)
+    Peak VRAM budget in MB. If not specified, auto-detected as the free VRAM reported by nvidia-smi.
 .PARAMETER SkipProfiling
     Skip the profiling step (use existing concurrent_results.txt / gpu_results.txt).
 #>
@@ -29,9 +28,21 @@ param(
     [string]$ModelsDir   = ".\gguf_models",
     [string]$ContextDir  = ".\paper_results\context_files",
     [string]$OutputCsv   = ".\paper_results\table5_results.csv",
-    [int]$PeakVramMB     = 30720,
+    [int]$PeakVramMB     = 0,
     [switch]$SkipProfiling
 )
+
+if ($PeakVramMB -eq 0) {
+    try {
+        $smiTotal = [int]((& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
+        $smiFree  = [int]((& nvidia-smi --query-gpu=memory.free  --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
+        $PeakVramMB = $smiFree
+        Write-Host "[*] GPU has $([math]::Round($smiFree / 1024, 1)) GB free out of $([math]::Round($smiTotal / 1024, 1)) GB total. Using ${PeakVramMB} MB (free) as peak VRAM for this testing."
+    } catch {
+        $PeakVramMB = 30720
+        Write-Host "[!] nvidia-smi not found or failed, defaulting to ${PeakVramMB} MB"
+    }
+}
 
 $ErrorActionPreference = "Stop"
 

@@ -16,7 +16,7 @@ BIN_DIR="${REPO_ROOT}/build/bin"
 MODELS_DIR="${REPO_ROOT}/gguf_models"
 CONTEXT_DIR="${SCRIPT_DIR}/context_files"
 OUTPUT_CSV="${SCRIPT_DIR}/table5_results.csv"
-PEAK_VRAM_MB=30720
+PEAK_VRAM_MB=0
 SKIP_PROFILING=false
 
 while [[ $# -gt 0 ]]; do
@@ -30,6 +30,18 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+if [ "$PEAK_VRAM_MB" -eq 0 ]; then
+    if command -v nvidia-smi &>/dev/null; then
+        _total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+        _free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+        PEAK_VRAM_MB=$_free
+        echo "[*] GPU has $(awk "BEGIN{printf \"%.1f\", $_free/1024}") GB free out of $(awk "BEGIN{printf \"%.1f\", $_total/1024}") GB total. Using ${PEAK_VRAM_MB} MB (free) as peak VRAM for this testing."
+    else
+        PEAK_VRAM_MB=30720
+        echo "[!] nvidia-smi not found, defaulting to ${PEAK_VRAM_MB} MB"
+    fi
+fi
 
 LLAMA_CLI="${BIN_DIR}/llama-cli"
 CONCURRENT_PROFILER="${BIN_DIR}/concurrent_profiler"

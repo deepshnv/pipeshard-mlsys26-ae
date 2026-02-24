@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reproduces Table 4 from the MLSys'26 paper: TPS and TTFT from pipelined sharding.
 .DESCRIPTION
@@ -83,6 +83,15 @@ function Resolve-ModelGguf($model) {
 $env:GGML_CUDA_PIPELINE_SHARDING = "1"
 $env:GGML_CUDA_REGISTER_HOST = "1"
 Write-Host "[*] Environment: GGML_CUDA_PIPELINE_SHARDING=1, GGML_CUDA_REGISTER_HOST=1"
+
+# ── Detect GPU VRAM ──────────────────────────────────────────────────────────
+try {
+    $smiTotal = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim()
+    $smiFree  = (& nvidia-smi --query-gpu=memory.free  --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim()
+    Write-Host "[*] GPU has $([math]::Round([int]$smiFree / 1024, 1)) GB free out of $([math]::Round([int]$smiTotal / 1024, 1)) GB total. Using free VRAM as effective peak for this testing."
+} catch {
+    Write-Host "[!] nvidia-smi not available -- cannot detect GPU VRAM."
+}
 
 # ── Step 1: Run profilers ─────────────────────────────────────────────────────
 if (-not $SkipProfiling) {
