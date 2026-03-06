@@ -1,22 +1,25 @@
-﻿<#
+<#
 .SYNOPSIS
     Runs all reproduction scripts (Tables 4, 5, 8, 9, Figure 2) sequentially.
-    Continues to the next script even if one fails.
+    Default: terminates on first failure. Use -ContinueOnError to log and continue.
 #>
 [CmdletBinding()]
-param()
+param(
+    [switch]$ContinueOnError
+)
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = if ($ContinueOnError) { "Continue" } else { "Stop" }
 
 Write-Host "=== Running all reproduction scripts ==="
+if ($ContinueOnError) { Write-Host "    (ContinueOnError mode: will log errors and continue)" }
 Write-Host ""
 
 $scripts = @(
-    @{ Name = "Table 4";  Cmd = ".\paper_results\repro_table4.ps1" },
-    @{ Name = "Table 5";  Cmd = ".\paper_results\repro_table5.ps1 -SkipProfiling" },
-    @{ Name = "Table 8";  Cmd = ".\paper_results\repro_table8.ps1 -SkipProfiling" },
-    @{ Name = "Table 9";  Cmd = ".\paper_results\repro_table9.ps1 -SkipProfiling" },
-    @{ Name = "Figure 2"; Cmd = ".\paper_results\repro_figure2.ps1 -SkipProfiling" }
+    @{ Name = "Table 4";  Cmd = ".\paper_results\repro_table4.ps1 -ContinueOnError:`$$ContinueOnError" },
+    @{ Name = "Table 5";  Cmd = ".\paper_results\repro_table5.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" },
+    @{ Name = "Table 8";  Cmd = ".\paper_results\repro_table8.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" },
+    @{ Name = "Table 9";  Cmd = ".\paper_results\repro_table9.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" },
+    @{ Name = "Figure 2"; Cmd = ".\paper_results\repro_figure2.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" }
 )
 
 $total = $scripts.Count
@@ -30,6 +33,7 @@ for ($i = 0; $i -lt $total; $i++) {
     } catch {
         Write-Host "  FAILED: $($s.Name) -- $_" -ForegroundColor Red
         $failed += $s.Name
+        if (-not $ContinueOnError) { Write-Error "Aborting. Use -ContinueOnError to continue past failures." }
     }
     Write-Host ""
 }

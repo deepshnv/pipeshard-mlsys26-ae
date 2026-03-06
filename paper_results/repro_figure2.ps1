@@ -27,18 +27,34 @@ param(
     [string]$ContextDir  = ".\paper_results\context_files",
     [string]$OutputCsv   = ".\paper_results\figure2_results.csv",
     [int]$MaxVramGB      = 32,
-    [switch]$SkipProfiling
+    [string]$FilterModel = "",
+    [switch]$SkipProfiling,
+    [switch]$ContinueOnError
 )
 
 $ErrorActionPreference = "Stop"
 
 # ── Models ────────────────────────────────────────────────────────────────────
-$Models = @(
+$AllModels = @(
     @{ Name = "minitron-4b"; Dir = "minitron4B";     File = "mn-minitron-4b-128k-instruct-v2_f16.gguf"; MaxNGL = 35 }
     @{ Name = "minitron-8b"; Dir = "minitron8B";     File = "mn-minitron-8b-128k-instruct-v2_f16.gguf"; MaxNGL = 41 }
     @{ Name = "qwen3-30b";   Dir = "Qwen3-30B-A3B";  File = "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf";  MaxNGL = 49 }
     @{ Name = "qwen3-235b";  Dir = "Qwen3-235B-A22B"; File = $null;                                     MaxNGL = 36 }
 )
+
+if ($FilterModel -ne "") {
+    # Normalize common names to internal names (same as table4/table5: nemo-* -> minitron-*, qwen-* -> qwen3-*)
+    $filterName = $FilterModel
+    if ($FilterModel -eq 'nemo-4b')   { $filterName = 'minitron-4b' }
+    if ($FilterModel -eq 'nemo-8b')   { $filterName = 'minitron-8b' }
+    if ($FilterModel -eq 'qwen-30b')  { $filterName = 'qwen3-30b' }
+    if ($FilterModel -eq 'qwen-235b') { $filterName = 'qwen3-235b' }
+    $Models = @($AllModels | Where-Object { $_.Name -eq $filterName })
+    $validNames = ($AllModels | ForEach-Object { $_.Name }) -join ', '
+    if ($Models.Count -eq 0) { Write-Error "Unknown model '$FilterModel'. Valid: $validNames (aliases: nemo-4b, nemo-8b, qwen-30b, qwen-235b)" }
+} else {
+    $Models = $AllModels
+}
 
 $ContextSizes  = @(1, 4, 16, 64)
 $ContextTokens = @{ 1=1024; 4=4096; 16=16384; 64=65536 }
@@ -217,6 +233,7 @@ foreach ($model in $Models) {
                 $baseResult = Run-LlamaCli $baseArgs
                 if ($baseResult.ExitCode -ne 0) {
                     Write-Host " FAILED" -ForegroundColor Red
+                    if (-not $ContinueOnError) { Write-Error "Baseline run failed. Use -ContinueOnError to skip failures." }
                 } else {
                     Write-Host " TTFT=$($baseResult.'TTFT(msec)')msec TPS=$($baseResult.TPS) E2EL=$($baseResult.'E2EL(msec)')msec"
                 }
@@ -236,6 +253,7 @@ foreach ($model in $Models) {
                 $psResult = Run-LlamaCli $psArgs
                 if ($psResult.ExitCode -ne 0) {
                     Write-Host " FAILED" -ForegroundColor Red
+                    if (-not $ContinueOnError) { Write-Error "PipeShard run failed. Use -ContinueOnError to skip failures." }
                 } else {
                     Write-Host " TTFT=$($psResult.'TTFT(msec)')msec TPS=$($psResult.TPS) E2EL=$($psResult.'E2EL(msec)')msec"
                 }

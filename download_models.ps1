@@ -1,12 +1,16 @@
 <#
 .SYNOPSIS
-    Downloads all required GGUF models for MLSys'26 artifact evaluation.
+    Downloads required GGUF models for MLSys'26 artifact evaluation.
 .DESCRIPTION
     Creates gguf_models/ subdirectories and downloads each model.
-    Requires: Python 3.12+, huggingface_hub[cli] installed, and HF login completed.
-    NVIDIA ACE models require manual download (browser-only); this script
-    downloads only the Hugging Face-hosted models and prints reminders for the rest.
+    Use -Model to download only a specific model (e.g., -Model qwen-30b).
+    Valid model names: nemo-4b, nemo-8b, qwen-30b, qwen-235b, cosmos-reason1
+.PARAMETER Model
+    Download only this model. If omitted, downloads all models.
 #>
+param(
+    [string]$Model = ""
+)
 
 $ErrorActionPreference = "Stop"
 $ModelsRoot = Join-Path $PSScriptRoot "gguf_models"
@@ -32,40 +36,74 @@ Write-Host " MLSys'26 AE - Model Download Script"
 Write-Host "============================================="
 Write-Host ""
 
-# --- 1. NVIDIA ACE models (manual download required) ---
-Write-Host "[!] mistral-nemo-minitron-4b-128k-instruct-f16"
-Write-Host "    Manual download required. Open in browser:"
-Write-Host "    https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z"
-Write-Host "    Extract the .7z archive into: $ModelsRoot\minitron4B"
-Write-Host ""
-
-Write-Host "[!] mistral-nemo-minitron-8b-128k-instruct-f16"
-Write-Host "    Manual download required. Open in browser:"
-Write-Host "    https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z"
-Write-Host "    Extract the .7z archive into: $ModelsRoot\minitron8B"
-Write-Host ""
-
-# --- 3. Qwen3-30B-A3B Q4_0 (single file direct download) ---
-Write-Host "[>] Downloading Qwen3-30B-A3B-Instruct-2507-Q4_0 ..."
-$Qwen30BUrl = "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
-$Qwen30BDest = Join-Path (Join-Path $ModelsRoot "Qwen3-30B-A3B") "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
-if (Test-Path $Qwen30BDest) {
-    Write-Host "    Already exists, skipping."
-} else {
-    Invoke-WebRequest -Uri $Qwen30BUrl -OutFile $Qwen30BDest -UseBasicParsing
-    Write-Host "    Saved to $Qwen30BDest"
+$validModels = @("nemo-4b", "nemo-8b", "qwen-30b", "qwen-235b", "cosmos-reason1")
+if ($Model -ne "" -and $Model -notin $validModels) {
+    Write-Error "Unknown model '$Model'. Valid: $($validModels -join ', ')"
 }
-Write-Host ""
+function ShouldDownload($name) { return ($Model -eq "" -or $Model -eq $name) }
 
-# --- 4. Qwen3-235B-A22B Q2_K (multi-file, use hf download) ---
-Write-Host "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
-hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir (Join-Path $ModelsRoot "Qwen3-235B-A22B")
-Write-Host ""
+function Download-And-Extract7z($url, $destDir, $label) {
+    $archivePath = Join-Path $env:TEMP "$label.7z"
+    $ggufFiles = Get-ChildItem -Path $destDir -Filter "*.gguf" -ErrorAction SilentlyContinue
+    if ($ggufFiles.Count -gt 0) {
+        Write-Host "    Already exists ($($ggufFiles[0].Name)), skipping."
+        return
+    }
+    Write-Host "    Downloading $label (~8 GB) ..."
+    Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing
+    $7zExe = Get-Command 7z -ErrorAction SilentlyContinue
+    if ($7zExe) {
+        Write-Host "    Extracting with 7z ..."
+        & 7z x $archivePath -o"$destDir" -y | Out-Null
+    } elseif (Get-Command tar -ErrorAction SilentlyContinue) {
+        Write-Host "    Extracting with tar ..."
+        tar -xf $archivePath -C $destDir 2>$null
+    } else {
+        Write-Host "    [!] Cannot auto-extract: install 7-Zip (winget install 7zip.7zip) then re-run, or extract manually:" -ForegroundColor Yellow
+        Write-Host "        $archivePath -> $destDir"
+        return
+    }
+    Remove-Item $archivePath -ErrorAction SilentlyContinue
+    Write-Host "    Extracted to $destDir"
+}
 
-# --- 5. Cosmos-Reason1 7B GGUF ---
-Write-Host "[>] Downloading Cosmos-Reason1-7B-GGUF ..."
-hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir (Join-Path $ModelsRoot "cosmos_reason1")
-Write-Host ""
+# --- 1. NVIDIA ACE models ---
+if (ShouldDownload "nemo-4b") {
+    Write-Host "[>] mistral-nemo-minitron-4b-128k-instruct-f16"
+    Download-And-Extract7z "https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z" (Join-Path $ModelsRoot "minitron4B") "minitron-4b"
+    Write-Host ""
+}
+
+if (ShouldDownload "nemo-8b") {
+    Write-Host "[>] mistral-nemo-minitron-8b-128k-instruct-f16"
+    Download-And-Extract7z "https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z" (Join-Path $ModelsRoot "minitron8B") "minitron-8b"
+    Write-Host ""
+}
+
+if (ShouldDownload "qwen-30b") {
+    Write-Host "[>] Downloading Qwen3-30B-A3B-Instruct-2507-Q4_0 ..."
+    $Qwen30BUrl = "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
+    $Qwen30BDest = Join-Path (Join-Path $ModelsRoot "Qwen3-30B-A3B") "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
+    if (Test-Path $Qwen30BDest) {
+        Write-Host "    Already exists, skipping."
+    } else {
+        Invoke-WebRequest -Uri $Qwen30BUrl -OutFile $Qwen30BDest -UseBasicParsing
+        Write-Host "    Saved to $Qwen30BDest"
+    }
+    Write-Host ""
+}
+
+if (ShouldDownload "qwen-235b") {
+    Write-Host "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
+    hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir (Join-Path $ModelsRoot "Qwen3-235B-A22B")
+    Write-Host ""
+}
+
+if (ShouldDownload "cosmos-reason1") {
+    Write-Host "[>] Downloading Cosmos-Reason1-7B-GGUF ..."
+    hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir (Join-Path $ModelsRoot "cosmos_reason1")
+    Write-Host ""
+}
 
 # --- Summary ---
 Write-Host "============================================="

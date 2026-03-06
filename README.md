@@ -834,11 +834,22 @@ These flags control vision encoder (CLIP) VRAM optimizations in `llama-mtmd-cli`
 
 > **Note on reproducibility:** Absolute performance numbers will vary across hardware; the relative speedups and directional trends should remain consistent. For best results, close other GPU-intensive applications (browsers, game launchers, other ML workloads, etc.) before running benchmarks -- any process consuming VRAM reduces the budget available to pipeline sharding and can degrade performance.
 
-**One-command run all:** To run all 5 reproduction scripts sequentially (continues even if one fails):
+**One-command run all:** First, download all required models, then run all 5 reproduction scripts sequentially:
 ```powershell
-.\run_all_repro.ps1          # Windows
-chmod +x run_all_repro.sh && ./run_all_repro.sh   # Linux/macOS
+.\download_models.ps1        # Windows – download/verify all models
+./download_models.sh         # Linux/macOS
+
+.\run_all_repro.ps1          # Windows (terminates on first failure by default)
+./run_all_repro.sh           # Linux/macOS
 ```
+
+**Common flags** available on all repro scripts:
+
+| Flag (PowerShell) | Flag (Bash) | Description |
+|---|---|---|
+| `-FilterModel <name>` | `--filter-model <name>` | Run only this model (Tables 4, 5, Figure 2; download script) |
+| `-ContinueOnError` | `--continue-on-error` | Log failures and continue instead of terminating (default: terminate on first error) |
+| `-SkipProfiling` | `--skip-profiling` | Skip hardware profiler runs |
 
 ---
 
@@ -864,11 +875,12 @@ winget install Python.Python.3.12          # skip if already installed
 python -m venv hf_venv; .\hf_venv\Scripts\Activate.ps1
 ```
 
-After installing the CLI (see below), you can download all models at once:
+After installing the CLI (see below), you can download all models at once (or just one with `-Model`):
 ```powershell
-.\download_models.ps1
+.\download_models.ps1                     # all models
+.\download_models.ps1 -Model qwen-30b     # only qwen-30b
 ```
-> The script auto-creates `gguf_models/` subdirectories, downloads HF-hosted models via `hf download`, and prints instructions for the NVIDIA ACE models that require manual browser download.
+> Valid model names: `nemo-4b`, `nemo-8b`, `qwen-30b`, `qwen-235b`, `cosmos-reason1`. The NVIDIA ACE models (`nemo-4b`, `nemo-8b`) are downloaded as `.7z` archives and auto-extracted if 7-Zip is installed. If not, install it first: `winget install 7zip.7zip` (Windows) or `sudo apt install p7zip-full` (Linux).
 
 **Linux / macOS:**
 ```bash
@@ -877,10 +889,11 @@ After installing the CLI (see below), you can download all models at once:
 python3.12 -m venv hf_venv && source hf_venv/bin/activate
 ```
 
-After installing the CLI (see below), you can download all models at once:
+After installing the CLI (see below), you can download all models at once (or just one with `--filter-model`):
 ```bash
 chmod +x download_models.sh
-./download_models.sh
+./download_models.sh                         # all models
+./download_models.sh --filter-model qwen-30b  # only qwen-30b
 ```
 
 **Then (all platforms):**

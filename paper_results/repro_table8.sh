@@ -16,6 +16,7 @@ IMAGE_PATH="${SCRIPT_DIR}/dummy_image/165_4k.jpg"
 OUTPUT_CSV="${SCRIPT_DIR}/table8_results.csv"
 VRAM_BUDGETS="4096,8192,14848"
 SKIP_PROFILING=false
+CONTINUE_ON_ERROR=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,6 +26,7 @@ while [[ $# -gt 0 ]]; do
         --output-csv)     OUTPUT_CSV="$2"; shift 2 ;;
         --vram-budgets)   VRAM_BUDGETS="$2"; shift 2 ;;
         --skip-profiling) SKIP_PROFILING=true; shift ;;
+        --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -65,8 +67,9 @@ parse_metrics() {
     local log="$1"
     local encode_ms=0 decode_ms=0 ttft_ms=0 tps=0
 
+    # Baseline: "image slice encoded in 219 ms"; VLMOpt: "image/slice encoded in 1308 ms"
     while IFS= read -r line; do
-        if [[ "$line" =~ "image/slice encoded in" ]]; then
+        if [[ "$line" =~ image.*slice\ encoded\ in ]]; then
             val=$(echo "$line" | grep -oP "[\d.]+(?=\s*ms)" || true)
             [ -n "$val" ] && encode_ms=$(awk "BEGIN { printf \"%.1f\", $encode_ms + $val }")
         fi
@@ -138,16 +141,6 @@ for i in "${!RES_LABELS[@]}"; do
     printf "    [Baseline] Running ..."
     vram_before=$(get_vram_usage_mb)
     log_file=$(mktemp)
-    vram_peak_file=$(mktemp)
-    echo "$vram_before" > "$vram_peak_file"
-
-    ( while true; do
-        v=$(get_vram_usage_mb)
-        cur=$(cat "$vram_peak_file")
-        [ "$v" -gt "$cur" ] 2>/dev/null && echo "$v" > "$vram_peak_file"
-        sleep 0.2
-    done ) &
-    MONITOR_PID=$!
 
     base_ok=true
     if "$MTMD_CLI" "${base_args[@]}" > "$log_file" 2>&1; then
@@ -156,23 +149,21 @@ for i in "${!RES_LABELS[@]}"; do
         base_ok=false
     fi
 
-    kill $MONITOR_PID 2>/dev/null; wait $MONITOR_PID 2>/dev/null || true
-    vram_peak=$(cat "$vram_peak_file")
-    peak_delta=$((vram_peak - vram_before))
-    rm -f "$vram_peak_file"
-
+    vram_after=$(get_vram_usage_mb)
+    peak_delta=$((vram_after > vram_before ? vram_after - vram_before : 0))
     peak_delta_baseline=$peak_delta
 
     if [ "$base_ok" = true ]; then
         base_csv=$(parse_metrics "$log_file")
         IFS=',' read -r b_enc b_dec b_ttft b_tps b_e2el <<< "$base_csv"
-        printf " E2EL=%smsec  TPS=%s  PeakVRAM=%sMB\n" "$b_e2el" "$b_tps" "$peak_delta"
+        printf " E2EL=%smsec  TPS=%s  Encode=%smsec  Decode=%smsec  PeakVRAM=%sMB\n" "$b_e2el" "$b_tps" "$b_enc" "$b_dec" "$peak_delta"
         for _mva in "${VRAM_BUDGETS_ARR[@]}"; do
             _vl="$((_mva / 1024))G"
             echo "${res_label},baseline,${_vl},${b_enc},${b_dec},${b_ttft},${b_tps},${b_e2el},${peak_delta},1.0" >> "$OUTPUT_CSV"
         done
     else
         printf " FAILED\n"
+        if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: Baseline run failed. Use --continue-on-error to skip failures."; exit 1; fi
         b_e2el=0
         for _mva in "${VRAM_BUDGETS_ARR[@]}"; do
             _vl="$((_mva / 1024))G"
@@ -197,16 +188,6 @@ for i in "${!RES_LABELS[@]}"; do
         printf "    [VLMOpt mva=%s (effective %sMB)] Running ..." "$vram_label" "$effective_mva"
         vram_before=$(get_vram_usage_mb)
         log_file=$(mktemp)
-        vram_peak_file=$(mktemp)
-        echo "$vram_before" > "$vram_peak_file"
-
-        ( while true; do
-            v=$(get_vram_usage_mb)
-            cur=$(cat "$vram_peak_file")
-            [ "$v" -gt "$cur" ] 2>/dev/null && echo "$v" > "$vram_peak_file"
-            sleep 0.2
-        done ) &
-        MONITOR_PID=$!
 
         vlm_ok=true
         if "$MTMD_CLI" "${vlm_args[@]}" > "$log_file" 2>&1; then
@@ -215,10 +196,8 @@ for i in "${!RES_LABELS[@]}"; do
             vlm_ok=false
         fi
 
-        kill $MONITOR_PID 2>/dev/null; wait $MONITOR_PID 2>/dev/null || true
-        vram_peak=$(cat "$vram_peak_file")
-        peak_delta=$((vram_peak - vram_before))
-        rm -f "$vram_peak_file"
+        vram_after=$(get_vram_usage_mb)
+        peak_delta=$((vram_after > vram_before ? vram_after - vram_before : 0))
 
         if [ "$vlm_ok" = true ]; then
             vlm_csv=$(parse_metrics "$log_file")
@@ -232,10 +211,11 @@ for i in "${!RES_LABELS[@]}"; do
                 speedup=$(awk "BEGIN { printf \"%.1f\", $b_e2el / $v_e2el }")
             fi
 
-            printf " E2EL=%smsec  TPS=%s  Speedup=%sx  PeakVRAM=%sMB\n" "$v_e2el" "$v_tps" "$speedup" "$peak_delta"
+            printf " E2EL=%smsec  TPS=%s  Encode=%smsec  Speedup=%sx  PeakVRAM=%sMB\n" "$v_e2el" "$v_tps" "$v_enc" "$speedup" "$peak_delta"
             echo "${res_label},vlmopt,${vram_label},${v_enc},${v_dec},${v_ttft},${v_tps},${v_e2el},${peak_delta},${speedup}" >> "$OUTPUT_CSV"
         else
             printf " FAILED\n"
+            if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: VLMOpt run failed. Use --continue-on-error to skip failures."; exit 1; fi
             echo "${res_label},vlmopt,${vram_label},N/A,N/A,N/A,N/A,N/A,${peak_delta},N/A" >> "$OUTPUT_CSV"
         fi
         rm -f "$log_file"

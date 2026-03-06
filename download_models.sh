@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
-# Downloads all required GGUF models for MLSys'26 artifact evaluation.
-# Creates gguf_models/ subdirectories and downloads each model.
-# Requires: Python 3.12+, huggingface_hub[cli] installed, and HF login completed.
-# NVIDIA ACE models require manual download (browser-only); this script
-# downloads only the Hugging Face-hosted models and prints reminders for the rest.
+# Downloads required GGUF models for MLSys'26 artifact evaluation.
+# Use --filter-model <name> to download only a specific model.
+# Valid model names: nemo-4b, nemo-8b, qwen-30b, qwen-235b, cosmos-reason1
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODELS_ROOT="$SCRIPT_DIR/gguf_models"
+FILTER_MODEL=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --filter-model) FILTER_MODEL="$2"; shift 2 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+should_download() { [ -z "$FILTER_MODEL" ] || [ "$FILTER_MODEL" = "$1" ]; }
 
 ensure_dir() {
     if [ ! -d "$1" ]; then
@@ -17,7 +25,6 @@ ensure_dir() {
     fi
 }
 
-# --- Create directory structure ---
 ensure_dir "$MODELS_ROOT"
 ensure_dir "$MODELS_ROOT/minitron4B"
 ensure_dir "$MODELS_ROOT/minitron8B"
@@ -28,46 +35,71 @@ ensure_dir "$MODELS_ROOT/cosmos_reason1"
 echo ""
 echo "============================================="
 echo " MLSys'26 AE - Model Download Script"
+if [ -n "$FILTER_MODEL" ]; then echo " (filtering: $FILTER_MODEL only)"; fi
 echo "============================================="
 echo ""
 
-# --- 1. NVIDIA ACE models (manual download required) ---
-echo "[!] mistral-nemo-minitron-4b-128k-instruct-f16"
-echo "    Manual download required. Open in browser:"
-echo "    https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z"
-echo "    Extract the .7z archive into: $MODELS_ROOT/minitron4B"
-echo ""
+download_and_extract_7z() {
+    local url="$1" dest_dir="$2" label="$3"
+    if ls "$dest_dir"/*.gguf 1>/dev/null 2>&1; then
+        echo "    Already exists, skipping."
+        return
+    fi
+    local archive="/tmp/${label}.7z"
+    echo "    Downloading $label (~8 GB) ..."
+    curl -L -o "$archive" "$url"
+    if command -v 7z &>/dev/null; then
+        echo "    Extracting with 7z ..."
+        7z x "$archive" -o"$dest_dir" -y >/dev/null
+    elif command -v 7za &>/dev/null; then
+        echo "    Extracting with 7za ..."
+        7za x "$archive" -o"$dest_dir" -y >/dev/null
+    else
+        echo "    [!] Cannot auto-extract: install p7zip (apt install p7zip-full) then re-run, or extract manually:"
+        echo "        $archive -> $dest_dir"
+        return
+    fi
+    rm -f "$archive"
+    echo "    Extracted to $dest_dir"
+}
 
-echo "[!] mistral-nemo-minitron-8b-128k-instruct-f16"
-echo "    Manual download required. Open in browser:"
-echo "    https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z"
-echo "    Extract the .7z archive into: $MODELS_ROOT/minitron8B"
-echo ""
-
-# --- 3. Qwen3-30B-A3B Q4_0 (single file direct download) ---
-QWEN30B_URL="https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
-QWEN30B_DEST="$MODELS_ROOT/Qwen3-30B-A3B/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
-
-echo "[>] Downloading Qwen3-30B-A3B-Instruct-2507-Q4_0 ..."
-if [ -f "$QWEN30B_DEST" ]; then
-    echo "    Already exists, skipping."
-else
-    curl -L -o "$QWEN30B_DEST" "$QWEN30B_URL"
-    echo "    Saved to $QWEN30B_DEST"
+if should_download "nemo-4b"; then
+    echo "[>] mistral-nemo-minitron-4b-128k-instruct-f16"
+    download_and_extract_7z "https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z" "$MODELS_ROOT/minitron4B" "minitron-4b"
+    echo ""
 fi
-echo ""
 
-# --- 4. Qwen3-235B-A22B Q2_K (multi-file, use hf download) ---
-echo "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
-hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir "$MODELS_ROOT/Qwen3-235B-A22B"
-echo ""
+if should_download "nemo-8b"; then
+    echo "[>] mistral-nemo-minitron-8b-128k-instruct-f16"
+    download_and_extract_7z "https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z" "$MODELS_ROOT/minitron8B" "minitron-8b"
+    echo ""
+fi
 
-# --- 5. Cosmos-Reason1 7B GGUF ---
-echo "[>] Downloading Cosmos-Reason1-7B-GGUF ..."
-hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir "$MODELS_ROOT/cosmos_reason1"
-echo ""
+if should_download "qwen-30b"; then
+    QWEN30B_URL="https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
+    QWEN30B_DEST="$MODELS_ROOT/Qwen3-30B-A3B/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf"
+    echo "[>] Downloading Qwen3-30B-A3B-Instruct-2507-Q4_0 ..."
+    if [ -f "$QWEN30B_DEST" ]; then
+        echo "    Already exists, skipping."
+    else
+        curl -L -o "$QWEN30B_DEST" "$QWEN30B_URL"
+        echo "    Saved to $QWEN30B_DEST"
+    fi
+    echo ""
+fi
 
-# --- Summary ---
+if should_download "qwen-235b"; then
+    echo "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
+    hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir "$MODELS_ROOT/Qwen3-235B-A22B"
+    echo ""
+fi
+
+if should_download "cosmos-reason1"; then
+    echo "[>] Downloading Cosmos-Reason1-7B-GGUF ..."
+    hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir "$MODELS_ROOT/cosmos_reason1"
+    echo ""
+fi
+
 echo "============================================="
 echo " Download complete."
 echo "============================================="

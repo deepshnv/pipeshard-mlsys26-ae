@@ -3,7 +3,8 @@
 #
 # Usage:
 #   chmod +x paper_results/repro_figure2.sh
-#   ./paper_results/repro_figure2.sh [--bin-dir DIR] [--max-vram-gb 31] [--skip-profiling]
+#   ./paper_results/repro_figure2.sh [--bin-dir DIR] [--max-vram-gb 31] [--filter-model NAME] [--skip-profiling]
+#   --filter-model accepts nemo-4b, nemo-8b, qwen-30b, qwen-235b (same as other repro scripts).
 
 set -euo pipefail
 
@@ -16,6 +17,8 @@ CONTEXT_DIR="${SCRIPT_DIR}/context_files"
 OUTPUT_CSV="${SCRIPT_DIR}/figure2_results.csv"
 MAX_VRAM_GB=32
 SKIP_PROFILING=false
+FILTER_MODEL=""
+CONTINUE_ON_ERROR=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,9 +28,22 @@ while [[ $# -gt 0 ]]; do
         --output-csv)     OUTPUT_CSV="$2"; shift 2 ;;
         --max-vram-gb)    MAX_VRAM_GB="$2"; shift 2 ;;
         --skip-profiling) SKIP_PROFILING=true; shift ;;
+        --filter-model)   FILTER_MODEL="$2"; shift 2 ;;
+        --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# Normalize filter to internal model names (script uses minitron-* / qwen3-* for NGL lookup)
+if [ -n "$FILTER_MODEL" ]; then
+    case "$FILTER_MODEL" in
+        nemo-4b)   FILTER_MODEL="minitron-4b" ;;
+        nemo-8b)   FILTER_MODEL="minitron-8b" ;;
+        qwen-30b)  FILTER_MODEL="qwen3-30b" ;;
+        qwen-235b) FILTER_MODEL="qwen3-235b" ;;
+        # minitron-4b, minitron-8b, qwen3-30b, qwen3-235b left as-is
+    esac
+fi
 
 LLAMA_CLI="${BIN_DIR}/llama-cli"
 if [ ! -f "$LLAMA_CLI" ]; then echo "ERROR: llama-cli not found at $LLAMA_CLI"; exit 1; fi
@@ -313,6 +329,8 @@ for i in "${!MODEL_NAMES[@]}"; do
     model_file="${MODEL_FILES[$i]}"
     max_ngl="${MODEL_MAXNGL[$i]}"
 
+    if [ -n "$FILTER_MODEL" ] && [ "$model_name" != "$FILTER_MODEL" ]; then continue; fi
+
     gguf_path=$(resolve_model_gguf "$model_dir" "$model_file" 2>/dev/null || true)
     if [ -z "$gguf_path" ]; then
         echo "[!] $model_name not found -- skipping."
@@ -346,7 +364,9 @@ for i in "${!MODEL_NAMES[@]}"; do
                 unset GGML_CUDA_PIPELINE_SHARDING GGML_CUDA_REGISTER_HOST 2>/dev/null || true
                 printf "    [%sK | %s | ub=%s] Baseline (ngl=%s%s) ..." "$ctx_k" "$vram_label" "$ub" "$ngl" "$capped_note"
                 log=$(mktemp)
-                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -ngl "$ngl" > "$log" 2>&1 || true
+                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -ngl "$ngl" > "$log" 2>&1
+                _rc=$?
+                if [ "$_rc" -ne 0 ] && [ "$CONTINUE_ON_ERROR" = false ]; then printf " FAILED\nERROR: Baseline failed (exit %d). Use --continue-on-error to skip.\n" "$_rc"; rm -f "$log"; exit 1; fi
                 b_ttft=$(grep -oP "prompt eval time\s*=\s*\K[\d.]+" "$log" || echo "0")
                 b_tps=$(grep "eval time" "$log" | grep -v "prompt" | grep -oP "[\d.]+\s*tokens per second" | grep -oP "[\d.]+" || echo "0")
                 b_e2el=$(awk "BEGIN { t=$b_tps; printf \"%.1f\", $b_ttft + (t>0 ? ($GEN_TOKENS/t)*1000 : 0) }")
@@ -366,7 +386,9 @@ for i in "${!MODEL_NAMES[@]}"; do
                 fi
                 printf "    [%sK | %s | ub=%s] PipeShard (mva=%s%s) ..." "$ctx_k" "$vram_label" "$ub" "$ps_mva" "$ps_capped"
                 log=$(mktemp)
-                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -mva "$ps_mva" -pipe-shard > "$log" 2>&1 || true
+                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -mva "$ps_mva" -pipe-shard > "$log" 2>&1
+                _rc=$?
+                if [ "$_rc" -ne 0 ] && [ "$CONTINUE_ON_ERROR" = false ]; then printf " FAILED\nERROR: PipeShard failed (exit %d). Use --continue-on-error to skip.\n" "$_rc"; rm -f "$log"; exit 1; fi
                 p_ttft=$(grep -oP "prompt eval time\s*=\s*\K[\d.]+" "$log" || echo "0")
                 p_tps=$(grep "eval time" "$log" | grep -v "prompt" | grep -oP "[\d.]+\s*tokens per second" | grep -oP "[\d.]+" || echo "0")
                 p_e2el=$(awk "BEGIN { t=$p_tps; printf \"%.1f\", $p_ttft + (t>0 ? ($GEN_TOKENS/t)*1000 : 0) }")

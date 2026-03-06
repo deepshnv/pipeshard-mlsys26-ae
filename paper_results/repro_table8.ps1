@@ -25,7 +25,8 @@ param(
     [string]$ImagePath   = ".\paper_results\dummy_image\165_4k.jpg",
     [string]$OutputCsv   = ".\paper_results\table8_results.csv",
     [string]$VramBudgets = "4096,8192,14848",
-    [switch]$SkipProfiling
+    [switch]$SkipProfiling,
+    [switch]$ContinueOnError
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,41 +75,6 @@ function Get-VramUsageMB {
     return -1
 }
 
-# ── Helper: monitor peak VRAM in background ───────────────────────────────────
-function Start-VramMonitor {
-    $script:VramBaseline = Get-VramUsageMB
-    $script:VramPeakFile = [System.IO.Path]::GetTempFileName()
-    $script:VramMonitorJob = Start-Job -ScriptBlock {
-        param($smiPath, $peakFile, $baselineMB)
-        $peak = $baselineMB
-        while ($true) {
-            try {
-                $raw = & $smiPath --query-gpu=memory.used --format=csv,noheader,nounits 2>$null
-                if ($raw) {
-                    $current = [int]($raw.Trim().Split("`n")[0])
-                    if ($current -gt $peak) { $peak = $current }
-                }
-            } catch {}
-            [System.IO.File]::WriteAllText($peakFile, "$peak")
-            Start-Sleep -Milliseconds 200
-        }
-    } -ArgumentList $NvidiaSmi, $script:VramPeakFile, $script:VramBaseline
-}
-
-function Stop-VramMonitor {
-    if ($script:VramMonitorJob) {
-        Stop-Job $script:VramMonitorJob -ErrorAction SilentlyContinue
-        Remove-Job $script:VramMonitorJob -Force -ErrorAction SilentlyContinue
-    }
-    $peakAbsolute = -1
-    if (Test-Path $script:VramPeakFile) {
-        $peakAbsolute = [int](Get-Content $script:VramPeakFile -ErrorAction SilentlyContinue)
-        Remove-Item $script:VramPeakFile -Force -ErrorAction SilentlyContinue
-    }
-    $peakDelta = if ($peakAbsolute -ge 0 -and $script:VramBaseline -ge 0) { $peakAbsolute - $script:VramBaseline } else { -1 }
-    return $peakDelta
-}
-
 # ── Helper: parse metrics from llama-mtmd-cli output ──────────────────────────
 function Parse-MtmdOutput($output) {
     $encodeMs = 0.0
@@ -116,8 +82,9 @@ function Parse-MtmdOutput($output) {
     $ttftMs   = 0.0
     $tps      = 0.0
 
+    # Baseline: "image slice encoded in 219 ms"; VLMOpt: "image/slice encoded in 1308 ms"
     foreach ($line in ($output -split "`n")) {
-        if ($line -match "image/slice encoded in\s+([\d.]+)\s*ms") {
+        if ($line -match "image\s*/?\s*slice encoded in\s+([\d.]+)\s*ms") {
             $encodeMs += [double]$Matches[1]
         }
         if ($line -match "image decoded.*in\s+([\d.]+)\s*ms") {
@@ -148,7 +115,7 @@ function Parse-MtmdOutput($output) {
 function Run-Inference($cliArgs, $runLabel) {
     Write-Host "    [$runLabel] Running ..." -NoNewline
 
-    Start-VramMonitor
+    $vramBefore = Get-VramUsageMB
 
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
@@ -156,10 +123,12 @@ function Run-Inference($cliArgs, $runLabel) {
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = $prevEAP
 
-    $peakVramDeltaMB = Stop-VramMonitor
+    $vramAfter = Get-VramUsageMB
+    $peakVramDeltaMB = if ($vramAfter -gt $vramBefore -and $vramBefore -ge 0) { $vramAfter - $vramBefore } else { 0 }
 
     if ($exitCode -ne 0) {
         Write-Host " FAILED (exit code $exitCode)" -ForegroundColor Red
+        if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
         return @{
             'Encode(msec)' = "N/A"; 'Decode(msec)' = "N/A"; 'TTFT(msec)' = "N/A"
             TPS = "N/A"; 'E2EL(msec)' = "N/A"; PeakVramMB = "N/A"

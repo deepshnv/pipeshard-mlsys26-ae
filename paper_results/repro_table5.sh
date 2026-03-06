@@ -18,6 +18,8 @@ CONTEXT_DIR="${SCRIPT_DIR}/context_files"
 OUTPUT_CSV="${SCRIPT_DIR}/table5_results.csv"
 PEAK_VRAM_MB=0
 SKIP_PROFILING=false
+FILTER_MODEL=""
+CONTINUE_ON_ERROR=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -27,6 +29,8 @@ while [[ $# -gt 0 ]]; do
         --output-csv)     OUTPUT_CSV="$2"; shift 2 ;;
         --peak-vram-mb)   PEAK_VRAM_MB="$2"; shift 2 ;;
         --skip-profiling) SKIP_PROFILING=true; shift ;;
+        --filter-model)   FILTER_MODEL="$2"; shift 2 ;;
+        --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -124,6 +128,8 @@ for i in "${!MODEL_NAMES[@]}"; do
     model_dir="${MODEL_DIRS[$i]}"
     model_file="${MODEL_FILES[$i]}"
 
+    if [ -n "$FILTER_MODEL" ] && [ "$model_name" != "$FILTER_MODEL" ]; then continue; fi
+
     gguf_path=$(resolve_model_gguf "$model_dir" "$model_file" 2>/dev/null || true)
     if [ -z "$gguf_path" ]; then
         echo "[!] WARNING: [$model_name] Model not found in $MODELS_DIR/$model_dir -- skipping."
@@ -174,6 +180,7 @@ for i in "${!MODEL_NAMES[@]}"; do
             printf " TPS=%s  TTFT=%smsec\n" "$tps" "$ttft"
         else
             printf " FAILED (see %s)\n" "$log_file"
+                if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: Run failed. Use --continue-on-error to skip failures."; exit 1; fi
         fi
 
         echo "${model_name},${ctx_k}K,${PEAK_VRAM_MB},${VRAM_LABEL},${tps},${ttft}" >> "$OUTPUT_CSV"

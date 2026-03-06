@@ -13,6 +13,7 @@ BIN_DIR="${REPO_ROOT}/build/bin"
 MODELS_DIR="${REPO_ROOT}/gguf_models"
 OUTPUT_CSV="${SCRIPT_DIR}/table9_results.csv"
 SKIP_PROFILING=false
+CONTINUE_ON_ERROR=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -20,6 +21,7 @@ while [[ $# -gt 0 ]]; do
         --models-dir)     MODELS_DIR="$2"; shift 2 ;;
         --output-csv)     OUTPUT_CSV="$2"; shift 2 ;;
         --skip-profiling) SKIP_PROFILING=true; shift ;;
+        --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -98,7 +100,12 @@ for mva in "${MVA_VALUES[@]}"; do
             -kvu \
             -mva "$mva" \
             -pipe-shard \
-            > "$log" 2>&1 || true
+            > "$log" 2>&1
+        run_rc=$?
+        if [ "$run_rc" -ne 0 ] && [ "$CONTINUE_ON_ERROR" = false ]; then
+            printf " FAILED\nERROR: Run failed (exit code %d). Use --continue-on-error to skip failures.\n" "$run_rc"
+            rm -f "$log"; exit 1
+        fi
 
         # Parse S_TG t/s (column 9 in awk, pipe-delimited) from all data rows, average them
         tps=$(grep -P '^\s*\|\s*\d+' "$log" | awk -F'|' '{gsub(/[ \t]+/, "", $9); sum+=$9; n++} END {if(n>0) printf "%.1f", sum/n; else print "N/A"}' || echo "N/A")

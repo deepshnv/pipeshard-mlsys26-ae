@@ -25,19 +25,29 @@ param(
     [string]$ModelsDir   = ".\gguf_models",
     [string]$ContextDir  = ".\paper_results\context_files",
     [string]$OutputCsv   = ".\paper_results\table4_results.csv",
-    [switch]$SkipProfiling
+    [string]$FilterModel = "",
+    [switch]$SkipProfiling,
+    [switch]$ContinueOnError
 )
 
 $ErrorActionPreference = "Stop"
 
 # ── Model definitions ──────────────────────────────────────────────────────────
-# Each entry: friendly name, subdirectory under ModelsDir, GGUF filename pattern
-$Models = @(
+$AllModels = @(
     @{ Name = "nemo-4b";   Dir = "minitron4B";      File = "mn-minitron-4b-128k-instruct-v2_f16.gguf" }
     @{ Name = "nemo-8b";   Dir = "minitron8B";      File = "mn-minitron-8b-128k-instruct-v2_f16.gguf" }
     @{ Name = "qwen-30b";  Dir = "Qwen3-30B-A3B";   File = "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf" }
     @{ Name = "qwen-235b"; Dir = "Qwen3-235B-A22B";  File = $null }
 )
+
+if ($FilterModel -ne "") {
+    $Models = @($AllModels | Where-Object { $_.Name -eq $FilterModel })
+    if ($Models.Count -eq 0) {
+        Write-Error "Unknown model '$FilterModel'. Valid names: $($AllModels | ForEach-Object { $_.Name } | Join-String -Separator ', ')"
+    }
+} else {
+    $Models = $AllModels
+}
 
 # Table 4 sweep parameters
 $ContextSizes  = @(1, 4, 16, 64)                          # in K tokens
@@ -175,6 +185,7 @@ foreach ($model in $Models) {
 
             if ($exitCode -ne 0) {
                 Write-Host " FAILED (exit code $exitCode)" -ForegroundColor Red
+                if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
             } else {
                 if ($output -match "prompt eval time\s*=\s*([\d.]+)\s*ms") {
                     $ttft = [math]::Round([double]$Matches[1], 1)
