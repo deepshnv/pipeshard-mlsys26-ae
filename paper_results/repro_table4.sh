@@ -45,7 +45,7 @@ fi
 # ── Model definitions ──────────────────────────────────────────────────────────
 MODEL_NAMES=("nemo-4b"     "nemo-8b"     "qwen-30b"       "qwen-235b")
 MODEL_DIRS=( "minitron4B"  "minitron8B"  "Qwen3-30B-A3B"  "Qwen3-235B-A22B")
-MODEL_FILES=("mn-minitron-4b-128k-instruct-v2_f16.gguf" "mn-minitron-8b-128k-instruct-v2_f16.gguf" "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf" "")
+MODEL_FILES=("mn-minitron-4b-128k-instruct-v2_f16.gguf" "mn-minitron-8b-128k-instruct-v2_f16.gguf" "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf" "Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf")
 
 CTX_SIZES=(1 4 16 64)
 declare -A CTX_TOKENS=( [1]=1024 [4]=4096 [16]=16384 [64]=65536 )

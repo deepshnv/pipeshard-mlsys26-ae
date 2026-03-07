@@ -100,7 +100,49 @@ if (ShouldDownload "qwen-30b") {
 
 if (ShouldDownload "qwen-235b") {
     Write-Host "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
-    huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir (Join-Path $ModelsRoot "Qwen3-235B-A22B")
+    $qwen235Dir = Join-Path $ModelsRoot "Qwen3-235B-A22B"
+    $qwen235Merged = Join-Path $qwen235Dir "Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf"
+
+    if (Test-Path $qwen235Merged) {
+        Write-Host "    Merged file already exists, skipping download."
+    } else {
+        huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir $qwen235Dir
+        # Flatten: huggingface-cli preserves the Q2_K/ subfolder — move GGUFs up
+        $q2kDir = Join-Path $qwen235Dir "Q2_K"
+        if (Test-Path $q2kDir) {
+            Get-ChildItem -Path $q2kDir -Filter "*.gguf" | Move-Item -Destination $qwen235Dir -Force
+            Remove-Item $q2kDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "    Flattened Q2_K/ subfolder into Qwen3-235B-A22B/"
+        }
+
+        # Merge split GGUF shards into a single file (avoids hybrid-loader bug)
+        $shard1 = Get-ChildItem -Path $qwen235Dir -Filter "*00001-of-*.gguf" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $ggufSplit = $null
+        foreach ($name in @("llama-gguf-split.exe", "gguf-split.exe")) {
+            $candidate = Join-Path $PSScriptRoot "build\bin\$name"
+            if (Test-Path $candidate) { $ggufSplit = $candidate; break }
+        }
+        if (-not $ggufSplit) {
+            $ggufSplit = (Get-Command llama-gguf-split -ErrorAction SilentlyContinue).Source
+        }
+        if (-not $ggufSplit) {
+            $ggufSplit = (Get-Command gguf-split -ErrorAction SilentlyContinue).Source
+        }
+        if ($shard1 -and $ggufSplit) {
+            Write-Host "    Merging split shards into single GGUF (this may take a while) ..."
+            & $ggufSplit --merge $shard1.FullName $qwen235Merged
+            if (Test-Path $qwen235Merged) {
+                Get-ChildItem -Path $qwen235Dir -Filter "*-of-*.gguf" | Remove-Item -Force
+                Write-Host "    Merged -> $qwen235Merged"
+            } else {
+                Write-Host "    [!] Merge failed; keeping split shards." -ForegroundColor Yellow
+            }
+        } elseif ($shard1) {
+            Write-Host "    [!] gguf-split / llama-gguf-split not found — skipping merge." -ForegroundColor Yellow
+            Write-Host "        Build it:  cmake --build build --target llama-gguf-split"
+            Write-Host "        Then run:  <gguf-split> --merge $($shard1.FullName) $qwen235Merged"
+        }
+    }
     Write-Host ""
 }
 

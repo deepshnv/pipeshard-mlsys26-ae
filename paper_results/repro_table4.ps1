@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Reproduces Table 4 from the MLSys'26 paper: TPS and TTFT from pipelined sharding.
 .DESCRIPTION

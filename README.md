@@ -1013,8 +1013,9 @@ The script:
 - For each resolution: runs baseline first, then VLMOpt at each VRAM budget
 - Parses **image encode time**, **image decode time**, **TTFT**, **TPS** from the output
 - Computes **E2EL** = encode + decode + TTFT + (100 / TPS) for each run
-- Monitors **peak VRAM usage** via `nvidia-smi` in the background
 - Computes the **speedup**
+
+> **Tip:** To monitor peak VRAM usage during runs, use Task Manager (Windows) or `watch -n 0.5 nvidia-smi` (Linux) in a separate terminal.
 
 **Windows (PowerShell):**
 ```powershell
@@ -1038,7 +1039,7 @@ chmod +x paper_results/repro_table8.sh
 | `-BinDir` / `--bin-dir` | Path to directory containing `llama-mtmd-cli` |
 | `-SkipProfiling` / `--skip-profiling` | Skip profiler runs |
 
-The output CSV (`paper_results/table8_results.csv`) contains columns: `Resolution, RunType, VramBudget, Encode(msec), Decode(msec), TTFT(msec), TPS, E2EL(msec), PeakVramMB, Speedup`. Compare the speedup values against the reference in `paper_results/table8.png`.
+The output CSV (`paper_results/table8_results.csv`) contains columns: `Resolution, RunType, VramBudget, Encode(msec), Decode(msec), TTFT(msec), TPS, E2EL(msec), Speedup`. Compare the speedup values against the reference in `paper_results/table8.png`.
 
 ---
 

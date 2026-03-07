@@ -4,7 +4,7 @@
 .DESCRIPTION
     Runs llama-mtmd-cli for the Cosmos-Reason1 VLM at 4 image resolutions (480p-1440p).
     For each resolution, runs a baseline (no sharding) then VLMOpt runs at 3 VRAM budgets.
-    Parses image encode time, decode time, TTFT, TPS, computes E2EL, and tracks peak VRAM.
+    Parses image encode time, decode time, TTFT, TPS, and computes E2EL.
 .PARAMETER BinDir
     Path to directory containing llama-mtmd-cli.exe. Default: .\build\bin\Release
 .PARAMETER ModelsDir
@@ -35,8 +35,7 @@ $BinDir    = (Resolve-Path $BinDir).Path
 $ModelsDir = (Resolve-Path $ModelsDir).Path
 $ImagePath = (Resolve-Path $ImagePath).Path
 
-$MtmdCli           = Join-Path $BinDir "llama-mtmd-cli.exe"
-$NvidiaSmi          = "nvidia-smi"
+$MtmdCli            = Join-Path $BinDir "llama-mtmd-cli.exe"
 $ConcurrentProfiler = Join-Path $BinDir "concurrent_profiler.exe"
 $GpuProfiler        = Join-Path $BinDir "gpu_profiler.exe"
 
@@ -66,16 +65,7 @@ $Resolutions = @(
 $GenTokens = 100
 $Prompt    = "Describe this image in under 100 words"
 
-# ── Helper: get current VRAM usage in MB ──────────────────────────────────────
-function Get-VramUsageMB {
-    try {
-        $raw = & $NvidiaSmi --query-gpu=memory.used --format=csv,noheader,nounits 2>$null
-        if ($raw) { return [int]($raw.Trim().Split("`n")[0]) }
-    } catch {}
-    return -1
-}
-
-# ── Helper: parse metrics from llama-mtmd-cli output ──────────────────────────
+# -- Helper: parse metrics from llama-mtmd-cli output --------------------------
 function Parse-MtmdOutput($output) {
     $encodeMs = 0.0
     $decodeMs = 0.0
@@ -111,11 +101,9 @@ function Parse-MtmdOutput($output) {
     }
 }
 
-# ── Helper: run a single inference and return metrics ─────────────────────────
+# -- Helper: run a single inference and return metrics -------------------------
 function Run-Inference($cliArgs, $runLabel) {
     Write-Host "    [$runLabel] Running ..." -NoNewline
-
-    $vramBefore = Get-VramUsageMB
 
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
@@ -123,30 +111,26 @@ function Run-Inference($cliArgs, $runLabel) {
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = $prevEAP
 
-    $vramAfter = Get-VramUsageMB
-    $peakVramDeltaMB = if ($vramAfter -gt $vramBefore -and $vramBefore -ge 0) { $vramAfter - $vramBefore } else { 0 }
-
     if ($exitCode -ne 0) {
         Write-Host " FAILED (exit code $exitCode)" -ForegroundColor Red
         if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
         return @{
             'Encode(msec)' = "N/A"; 'Decode(msec)' = "N/A"; 'TTFT(msec)' = "N/A"
-            TPS = "N/A"; 'E2EL(msec)' = "N/A"; PeakVramMB = "N/A"
+            TPS = "N/A"; 'E2EL(msec)' = "N/A"
             Failed = $true
         }
     }
 
     $metrics = Parse-MtmdOutput $output
-    $metrics["PeakVramMB"] = $peakVramDeltaMB
     $metrics["Failed"] = $false
 
-    Write-Host (" E2EL={0}msec  TPS={1}  TTFT={2}msec  Encode={3}msec  PeakVRAM={4}MB" -f `
-        $metrics.'E2EL(msec)', $metrics.TPS, $metrics.'TTFT(msec)', $metrics.'Encode(msec)', $peakVramDeltaMB)
+    Write-Host (" E2EL={0}msec  TPS={1}  TTFT={2}msec  Encode={3}msec" -f `
+        $metrics.'E2EL(msec)', $metrics.TPS, $metrics.'TTFT(msec)', $metrics.'Encode(msec)') -NoNewline
 
     return $metrics
 }
 
-# ── Detect GPU VRAM ──────────────────────────────────────────────────────────
+# -- Detect GPU VRAM ----------------------------------------------------------
 try {
     $smiTotal = [int]((& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
     $smiFree  = [int]((& nvidia-smi --query-gpu=memory.free  --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
@@ -155,7 +139,7 @@ try {
     Write-Host "[!] nvidia-smi not available -- cannot detect GPU VRAM."
 }
 
-# ── Profiling ─────────────────────────────────────────────────────────────────
+# -- Profiling -----------------------------------------------------------------
 if (-not $SkipProfiling) {
     Write-Host ""
     Write-Host "============================================="
@@ -173,7 +157,7 @@ if (-not $SkipProfiling) {
     Write-Host "[~] Skipping profiling."
 }
 
-# ── Main sweep ────────────────────────────────────────────────────────────────
+# -- Main sweep ----------------------------------------------------------------
 Write-Host ""
 Write-Host "============================================="
 Write-Host " Table 8 Reproduction: Cosmos-Reason1 VLMOpt"
@@ -188,7 +172,7 @@ $Results = @()
 foreach ($res in $Resolutions) {
     Write-Host "=== Resolution: $($res.Label) (cis=$($res.CIS)) ==="
 
-    # ── Baseline: no sharding, no vlmopt ──
+    # -- Baseline: no sharding, no vlmopt --
     $baseArgs = @(
         "-m", $ModelPath,
         "--mmproj", $MmprojPath,
@@ -207,6 +191,7 @@ foreach ($res in $Resolutions) {
     $env:MTMD_CLIP_FLASH_ATTN = $null
 
     $baseMetrics = Run-Inference $baseArgs "Baseline"
+    if (-not $baseMetrics.Failed) { Write-Host "" }
 
     # Emit one baseline row per VRAM budget so the CSV is rectangular
     foreach ($mvaMB in $VramBudgetsMBArr) {
@@ -220,12 +205,11 @@ foreach ($res in $Resolutions) {
             'TTFT(msec)'   = $baseMetrics.'TTFT(msec)'
             TPS            = $baseMetrics.TPS
             'E2EL(msec)'   = $baseMetrics.'E2EL(msec)'
-            PeakVramMB     = $baseMetrics.PeakVramMB
             Speedup        = "1.0"
         }
     }
 
-    # ── VLMOpt runs: enable sharding + vlmopt ──
+    # -- VLMOpt runs: enable sharding + vlmopt --
     $env:GGML_CUDA_PIPELINE_SHARDING = "1"
     $env:GGML_CUDA_REGISTER_HOST = "1"
     $env:MTMD_CLIP_FLASH_ATTN = "1"
@@ -255,12 +239,10 @@ foreach ($res in $Resolutions) {
         $vlmMetrics = Run-Inference $vlmArgs "VLMOpt mva=${vramLabel} (effective $($effectiveMva)MB)"
 
         $speedup = "N/A"
-        $baselinePeakMB = if ($baseMetrics.PeakVramMB -is [int]) { $baseMetrics.PeakVramMB } else { 0 }
-        if ($baselinePeakMB -gt $mvaMB) {
-            $speedup = "OOM"
-        } elseif (-not $baseMetrics.Failed -and -not $vlmMetrics.Failed -and $baseMetrics.'E2EL(msec)' -gt 0 -and $vlmMetrics.'E2EL(msec)' -gt 0) {
+        if (-not $baseMetrics.Failed -and -not $vlmMetrics.Failed -and $baseMetrics.'E2EL(msec)' -gt 0 -and $vlmMetrics.'E2EL(msec)' -gt 0) {
             $speedup = [math]::Round([double]$baseMetrics.'E2EL(msec)' / [double]$vlmMetrics.'E2EL(msec)', 1)
         }
+        if (-not $vlmMetrics.Failed) { Write-Host "  Speedup=${speedup}x" }
 
         $Results += [PSCustomObject]@{
             Resolution     = $res.Label
@@ -271,14 +253,13 @@ foreach ($res in $Resolutions) {
             'TTFT(msec)'   = $vlmMetrics.'TTFT(msec)'
             TPS            = $vlmMetrics.TPS
             'E2EL(msec)'   = $vlmMetrics.'E2EL(msec)'
-            PeakVramMB     = $vlmMetrics.PeakVramMB
             Speedup        = $speedup
         }
     }
     Write-Host ""
 }
 
-# ── Write CSV ─────────────────────────────────────────────────────────────────
+# -- Write CSV -----------------------------------------------------------------
 $csvDir = Split-Path $OutputCsv -Parent
 if (-not (Test-Path $csvDir)) { New-Item -ItemType Directory -Path $csvDir -Force | Out-Null }
 $Results | Export-Csv -Path $OutputCsv -NoTypeInformation -Encoding UTF8
@@ -288,7 +269,7 @@ Write-Host " Table 8 sweep complete."
 Write-Host " Results written to: $OutputCsv"
 Write-Host "============================================="
 
-# ── Print speedup summary ────────────────────────────────────────────────────
+# -- Print speedup summary ----------------------------------------------------
 Write-Host ""
 Write-Host "E2EL Speedup Summary (VLMOpt vs Baseline):"
 Write-Host ("-" * 60)

@@ -58,11 +58,7 @@ RES_LABELS=("480p"  "720p"  "1080p" "1440p")
 RES_CIS=(640 1280 1920 2560)
 RES_CTX=("" "" "3072" "6000")
 
-get_vram_usage_mb() {
-    nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ' || echo "-1"
-}
-
-# ── Parse metrics from output log ─────────────────────────────────────────────
+# -- Parse metrics from output log ---------------------------------------------
 parse_metrics() {
     local log="$1"
     local encode_ms=0 decode_ms=0 ttft_ms=0 tps=0
@@ -94,14 +90,14 @@ parse_metrics() {
     echo "$encode_out,$decode_out,$ttft_out,$tps,$e2el_ms"
 }
 
-# ── Detect GPU VRAM ──────────────────────────────────────────────────────────
+# -- Detect GPU VRAM ----------------------------------------------------------
 if command -v nvidia-smi &>/dev/null; then
     _total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
     _free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
     echo "[*] GPU has $(awk "BEGIN{printf \"%.1f\", $_free/1024}") GB free out of $(awk "BEGIN{printf \"%.1f\", $_total/1024}") GB total. Using free VRAM as effective peak for this testing."
 fi
 
-# ── Profiling ─────────────────────────────────────────────────────────────────
+# -- Profiling -----------------------------------------------------------------
 if [ "$SKIP_PROFILING" = false ]; then
     echo ""
     echo "============================================="
@@ -113,7 +109,7 @@ else
     echo "[~] Skipping profiling."
 fi
 
-# ── Main sweep ────────────────────────────────────────────────────────────────
+# -- Main sweep ----------------------------------------------------------------
 echo ""
 echo "============================================="
 echo " Table 8 Reproduction: Cosmos-Reason1 VLMOpt"
@@ -123,7 +119,7 @@ echo " Mmproj: $MMPROJ_PATH"
 echo " Image:  $IMAGE_PATH"
 echo ""
 
-echo "Resolution,RunType,VramBudget,Encode(msec),Decode(msec),TTFT(msec),TPS,E2EL(msec),PeakVramMB,Speedup" > "$OUTPUT_CSV"
+echo "Resolution,RunType,VramBudget,Encode(msec),Decode(msec),TTFT(msec),TPS,E2EL(msec),Speedup" > "$OUTPUT_CSV"
 
 for i in "${!RES_LABELS[@]}"; do
     res_label="${RES_LABELS[$i]}"
@@ -132,14 +128,13 @@ for i in "${!RES_LABELS[@]}"; do
 
     echo "=== Resolution: $res_label (cis=$cis) ==="
 
-    # ── Baseline ──
+    # -- Baseline --
     unset GGML_CUDA_PIPELINE_SHARDING GGML_CUDA_REGISTER_HOST MTMD_CLIP_FLASH_ATTN 2>/dev/null || true
 
     base_args=(-m "$MODEL_PATH" --mmproj "$MMPROJ_PATH" -p "$PROMPT" --image "$IMAGE_PATH" -n "$GEN_TOKENS" -cis "$cis")
     [ -n "$ctx_override" ] && base_args+=(-c "$ctx_override")
 
     printf "    [Baseline] Running ..."
-    vram_before=$(get_vram_usage_mb)
     log_file=$(mktemp)
 
     base_ok=true
@@ -149,17 +144,13 @@ for i in "${!RES_LABELS[@]}"; do
         base_ok=false
     fi
 
-    vram_after=$(get_vram_usage_mb)
-    peak_delta=$((vram_after > vram_before ? vram_after - vram_before : 0))
-    peak_delta_baseline=$peak_delta
-
     if [ "$base_ok" = true ]; then
         base_csv=$(parse_metrics "$log_file")
         IFS=',' read -r b_enc b_dec b_ttft b_tps b_e2el <<< "$base_csv"
-        printf " E2EL=%smsec  TPS=%s  Encode=%smsec  Decode=%smsec  PeakVRAM=%sMB\n" "$b_e2el" "$b_tps" "$b_enc" "$b_dec" "$peak_delta"
+        printf " E2EL=%smsec  TPS=%s  Encode=%smsec  Decode=%smsec\n" "$b_e2el" "$b_tps" "$b_enc" "$b_dec"
         for _mva in "${VRAM_BUDGETS_ARR[@]}"; do
             _vl="$((_mva / 1024))G"
-            echo "${res_label},baseline,${_vl},${b_enc},${b_dec},${b_ttft},${b_tps},${b_e2el},${peak_delta},1.0" >> "$OUTPUT_CSV"
+            echo "${res_label},baseline,${_vl},${b_enc},${b_dec},${b_ttft},${b_tps},${b_e2el},1.0" >> "$OUTPUT_CSV"
         done
     else
         printf " FAILED\n"
@@ -167,12 +158,12 @@ for i in "${!RES_LABELS[@]}"; do
         b_e2el=0
         for _mva in "${VRAM_BUDGETS_ARR[@]}"; do
             _vl="$((_mva / 1024))G"
-            echo "${res_label},baseline,${_vl},N/A,N/A,N/A,N/A,N/A,${peak_delta},1.0" >> "$OUTPUT_CSV"
+            echo "${res_label},baseline,${_vl},N/A,N/A,N/A,N/A,N/A,1.0" >> "$OUTPUT_CSV"
         done
     fi
     rm -f "$log_file"
 
-    # ── VLMOpt runs ──
+    # -- VLMOpt runs --
     export GGML_CUDA_PIPELINE_SHARDING=1
     export GGML_CUDA_REGISTER_HOST=1
     export MTMD_CLIP_FLASH_ATTN=1
@@ -186,7 +177,6 @@ for i in "${!RES_LABELS[@]}"; do
         [ -n "$ctx_override" ] && vlm_args+=(-c "$ctx_override")
 
         printf "    [VLMOpt mva=%s (effective %sMB)] Running ..." "$vram_label" "$effective_mva"
-        vram_before=$(get_vram_usage_mb)
         log_file=$(mktemp)
 
         vlm_ok=true
@@ -196,27 +186,21 @@ for i in "${!RES_LABELS[@]}"; do
             vlm_ok=false
         fi
 
-        vram_after=$(get_vram_usage_mb)
-        peak_delta=$((vram_after > vram_before ? vram_after - vram_before : 0))
-
         if [ "$vlm_ok" = true ]; then
             vlm_csv=$(parse_metrics "$log_file")
             IFS=',' read -r v_enc v_dec v_ttft v_tps v_e2el <<< "$vlm_csv"
 
             speedup="N/A"
-            base_peak_delta_for_cmp=${peak_delta_baseline:-0}
-            if [ "$base_peak_delta_for_cmp" -gt "$mva_mb" ] 2>/dev/null; then
-                speedup="OOM"
-            elif [ "$base_ok" = true ] && [ "$(echo "$b_e2el > 0" | bc -l 2>/dev/null || echo 0)" = "1" ] && [ "$(echo "$v_e2el > 0" | bc -l 2>/dev/null || echo 0)" = "1" ]; then
+            if [ "$base_ok" = true ] && [ "$(echo "$b_e2el > 0" | bc -l 2>/dev/null || echo 0)" = "1" ] && [ "$(echo "$v_e2el > 0" | bc -l 2>/dev/null || echo 0)" = "1" ]; then
                 speedup=$(awk "BEGIN { printf \"%.1f\", $b_e2el / $v_e2el }")
             fi
 
-            printf " E2EL=%smsec  TPS=%s  Encode=%smsec  Speedup=%sx  PeakVRAM=%sMB\n" "$v_e2el" "$v_tps" "$v_enc" "$speedup" "$peak_delta"
-            echo "${res_label},vlmopt,${vram_label},${v_enc},${v_dec},${v_ttft},${v_tps},${v_e2el},${peak_delta},${speedup}" >> "$OUTPUT_CSV"
+            printf " E2EL=%smsec  TPS=%s  Encode=%smsec  Speedup=%sx\n" "$v_e2el" "$v_tps" "$v_enc" "$speedup"
+            echo "${res_label},vlmopt,${vram_label},${v_enc},${v_dec},${v_ttft},${v_tps},${v_e2el},${speedup}" >> "$OUTPUT_CSV"
         else
             printf " FAILED\n"
             if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: VLMOpt run failed. Use --continue-on-error to skip failures."; exit 1; fi
-            echo "${res_label},vlmopt,${vram_label},N/A,N/A,N/A,N/A,N/A,${peak_delta},N/A" >> "$OUTPUT_CSV"
+            echo "${res_label},vlmopt,${vram_label},N/A,N/A,N/A,N/A,N/A,N/A" >> "$OUTPUT_CSV"
         fi
         rm -f "$log_file"
     done

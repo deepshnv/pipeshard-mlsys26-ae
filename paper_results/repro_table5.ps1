@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Reproduces Table 5 from the MLSys'26 paper: TPS and TTFT at peak VRAM capacity.
 .DESCRIPTION
@@ -34,12 +34,14 @@ param(
     [switch]$ContinueOnError
 )
 
+$VramBufferMB = 3072   # 3 GB reserved for OS/driver overhead
 if ($PeakVramMB -eq 0) {
     try {
         $smiTotal = [int]((& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
         $smiFree  = [int]((& nvidia-smi --query-gpu=memory.free  --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
-        $PeakVramMB = $smiFree
-        Write-Host "[*] GPU has $([math]::Round($smiFree / 1024, 1)) GB free out of $([math]::Round($smiTotal / 1024, 1)) GB total. Using ${PeakVramMB} MB (free) as peak VRAM for this testing."
+        $PeakVramMB = [math]::Max($smiFree - $VramBufferMB, 1024)
+        Write-Host "[*] GPU has $([math]::Round($smiFree / 1024, 1)) GB free out of $([math]::Round($smiTotal / 1024, 1)) GB total."
+        Write-Host "[*] Reserving ${VramBufferMB} MB buffer for OS/driver -> using ${PeakVramMB} MB as peak VRAM budget."
     } catch {
         $PeakVramMB = 30720
         Write-Host "[!] nvidia-smi not found or failed, defaulting to ${PeakVramMB} MB"
@@ -178,13 +180,18 @@ foreach ($model in $Models) {
         $ErrorActionPreference = $prevEAP
 
         if ($exitCode -ne 0) {
-            Write-Host " FAILED (exit code $exitCode)" -ForegroundColor Red
-                if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
+            if ($exitCode -lt 0) {
+                Write-Host " CRASHED (exit $exitCode) -- VRAM budget ${PeakVramMB} MB likely too high for this GPU." -ForegroundColor Red
+                Write-Host "    [!] Try lowering with: -PeakVramMB VALUE  (current: ${PeakVramMB})" -ForegroundColor Yellow
+            } else {
+                Write-Host " FAILED (exit code $exitCode)" -ForegroundColor Red
+            }
+            if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
         } else {
-            if ($output -match "prompt eval time\s*=\s*([\d.]+)\s*ms") {
+            if ($output -match 'prompt eval time\s*=\s*([\d.]+)\s*ms') {
                 $ttft = [math]::Round([double]$Matches[1], 1)
             }
-            if ($output -match "eval time\s*=\s*[\d.]+\s*ms\s*/\s*\d+\s*runs?\s*\(\s*[\d.]+\s*ms per token,\s*([\d.]+)\s*tokens per second") {
+            if ($output -match 'eval time\s*=\s*[\d.]+\s*ms\s*/\s*\d+\s*runs?\s*\(\s*[\d.]+\s*ms per token,\s*([\d.]+)\s*tokens per second') {
                 $tps = [math]::Round([double]$Matches[1], 1)
             }
             Write-Host " TPS=$tps  TTFT=${ttft}msec"
