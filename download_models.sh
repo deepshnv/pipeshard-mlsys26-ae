@@ -60,6 +60,12 @@ download_and_extract_7z() {
         return
     fi
     rm -f "$archive"
+    # Flatten: NVIDIA 7z archives nest files inside a subfolder — move everything up
+    for subdir in "$dest_dir"/*/; do
+        [ -d "$subdir" ] || continue
+        mv "$subdir"* "$dest_dir/" 2>/dev/null || true
+        rmdir "$subdir" 2>/dev/null || true
+    done
     echo "    Extracted to $dest_dir"
 }
 

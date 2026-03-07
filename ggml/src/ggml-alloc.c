@@ -551,7 +551,7 @@ static bool ggml_gallocr_is_own(ggml_gallocr_t galloc, struct ggml_tensor * t) {
 }
 
 static bool ggml_gallocr_is_allocated(ggml_gallocr_t galloc, struct ggml_tensor * t) {
-    if (galloc->pipe_shard == true && (t->flags & GGML_TENSOR_FLAG_KV) || (t->flags & GGML_TENSOR_FLAG_LEAF))  return true;
+    if ((galloc->pipe_shard == true && (t->flags & GGML_TENSOR_FLAG_KV)) || (t->flags & GGML_TENSOR_FLAG_LEAF))  return true;
     return t->data != NULL || ggml_gallocr_hash_get(galloc, t)->allocated;
 }
 

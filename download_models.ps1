@@ -64,6 +64,11 @@ function Download-And-Extract7z($url, $destDir, $label) {
         return
     }
     Remove-Item $archivePath -ErrorAction SilentlyContinue
+    # Flatten: NVIDIA 7z archives nest files inside a subfolder — move everything up
+    Get-ChildItem -Path $destDir -Directory | ForEach-Object {
+        Get-ChildItem -Path $_.FullName | Move-Item -Destination $destDir -Force
+        Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
     Write-Host "    Extracted to $destDir"
 }
 

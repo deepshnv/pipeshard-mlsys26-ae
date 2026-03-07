@@ -605,14 +605,49 @@ VLMOpt provides complementary VRAM-reduction optimizations for the vision encode
 1. **Hardware**: An x86_64 machine with a discrete GPU (preferably an NVIDIA RTX series GPU).
 
 2. **NVIDIA Driver & CUDA Toolkit** (for NVIDIA GPUs):
-   - Install the latest **Game Ready Driver** (GRD) from [NVIDIA Driver Downloads](https://www.nvidia.com/Download/index.aspx):
-     1. Select your GPU product, OS, and "Game Ready Driver" download type.
-     2. Download and run the installer; a reboot may be required.
-     3. Verify with `nvidia-smi` in a terminal.
-   - Install **CUDA Toolkit 12.8+** from [CUDA Toolkit Downloads](https://developer.nvidia.com/cuda-downloads):
-     1. Select your OS, architecture, and installer type (recommended: network installer).
-     2. Run the installer and follow the on-screen prompts (the default options are fine).
-     3. Ensure `nvcc` is on your PATH. Verify with `nvcc --version`.
+   - **Windows**:
+     - Install the latest **Game Ready Driver** (GRD) from [NVIDIA Driver Downloads](https://www.nvidia.com/Download/index.aspx):
+       1. Select your GPU product, OS, and "Game Ready Driver" download type.
+       2. Download and run the installer; a reboot may be required.
+       3. Verify with `nvidia-smi` in a terminal.
+     - Install **CUDA Toolkit 12.8+** from [CUDA Toolkit Downloads](https://developer.nvidia.com/cuda-downloads):
+       1. Select your OS, architecture, and installer type (recommended: network installer).
+       2. Run the installer and follow the on-screen prompts.
+       3. Ensure `nvcc` is on your PATH. Verify with `nvcc --version`.
+
+   - **Ubuntu 24.04 + NVIDIA A100**:
+     1. Install build tools, CMake, Git, and the NVIDIA driver:
+        ```bash
+        sudo apt update
+        sudo apt install -y build-essential dkms linux-headers-$(uname -r) git cmake ninja-build pkg-config ubuntu-drivers-common
+        sudo ubuntu-drivers install --gpgpu
+        sudo apt install -y \
+          linux-modules-nvidia-570-server-open-$(uname -r) \
+          linux-modules-nvidia-570-server-open-generic-hwe-24.04 \
+          nvidia-driver-570-server-open \
+          nvidia-utils-570-server
+        sudo reboot
+        ```
+     2. Verify the driver:
+        ```bash
+        nvidia-smi
+        ```
+     3. Install **CUDA Toolkit 12.8**:
+        ```bash
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+        sudo dpkg -i cuda-keyring_1.1-1_all.deb
+        sudo apt update
+        sudo apt install -y cuda-toolkit-12-8
+        echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
+        echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+        source ~/.bashrc
+        ```
+     4. Verify CUDA / toolchain:
+        ```bash
+        nvcc --version
+        cmake --version
+        git --version
+        ```
 
 3. *(Optional, Windows)* **Visual Studio 2022+** — needed for the MSVC compiler and CMake generator on Windows. Install from [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) and select the **"Desktop development with C++"** workload during setup.
 
@@ -627,7 +662,6 @@ git clone https://github.com/deepshnv/pipeshard-mlsys26-ae.git
 cd pipeshard-mlsys26-ae
 cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF
 cmake --build build --config Release -j16
-```
 
 On Windows, the CMake configure step also generates a Visual Studio solution (`build/llama.cpp.sln`) that can be opened and built directly in Visual Studio. Binaries are placed in `build/bin/Release/` (Windows) or `build/bin/` (Linux/macOS).
 
@@ -837,10 +871,13 @@ These flags control vision encoder (CLIP) VRAM optimizations in `llama-mtmd-cli`
 **One-command run all:** First, download all required models, then run all 5 reproduction scripts sequentially:
 ```powershell
 .\download_models.ps1        # Windows – download/verify all models
-./download_models.sh         # Linux/macOS
-
 .\run_all_repro.ps1          # Windows (terminates on first failure by default)
-./run_all_repro.sh           # Linux/macOS
+```
+```bash
+# Linux/macOS – make scripts executable first
+chmod +x download_models.sh run_all_repro.sh paper_results/*.sh
+./download_models.sh
+./run_all_repro.sh
 ```
 
 **Common flags** available on all repro scripts:
@@ -875,10 +912,15 @@ winget install Python.Python.3.12          # skip if already installed
 python -m venv hf_venv; .\hf_venv\Scripts\Activate.ps1
 ```
 
-After installing the CLI (see below), you can download all models at once (or just one with `-Model`):
+After installing the CLI (see below), you can download all models at once (or just one):
 ```powershell
 .\download_models.ps1                     # all models
 .\download_models.ps1 -Model qwen-30b     # only qwen-30b
+```
+```bash
+chmod +x download_models.sh
+./download_models.sh                          # all models
+./download_models.sh --filter-model qwen-30b  # only qwen-30b
 ```
 > Valid model names: `nemo-4b`, `nemo-8b`, `qwen-30b`, `qwen-235b`, `cosmos-reason1`. The NVIDIA ACE models (`nemo-4b`, `nemo-8b`) are downloaded as `.7z` archives and auto-extracted if 7-Zip is installed. If not, install it first: `winget install 7zip.7zip` (Windows) or `sudo apt install p7zip-full` (Linux).
 
@@ -887,13 +929,6 @@ After installing the CLI (see below), you can download all models at once (or ju
 # Ubuntu/Debian: sudo apt install -y python3.12 python3.12-venv
 # macOS:         brew install python@3.12
 python3.12 -m venv hf_venv && source hf_venv/bin/activate
-```
-
-After installing the CLI (see below), you can download all models at once (or just one with `--filter-model`):
-```bash
-chmod +x download_models.sh
-./download_models.sh                         # all models
-./download_models.sh --filter-model qwen-30b  # only qwen-30b
 ```
 
 **Then (all platforms):**
