@@ -35,12 +35,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+VRAM_BUFFER_MB=3072   # 3 GB reserved for OS/driver overhead
 if [ "$PEAK_VRAM_MB" -eq 0 ]; then
     if command -v nvidia-smi &>/dev/null; then
         _total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
         _free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
-        PEAK_VRAM_MB=$_free
-        echo "[*] GPU has $(awk "BEGIN{printf \"%.1f\", $_free/1024}") GB free out of $(awk "BEGIN{printf \"%.1f\", $_total/1024}") GB total. Using ${PEAK_VRAM_MB} MB (free) as peak VRAM for this testing."
+        PEAK_VRAM_MB=$((_free - VRAM_BUFFER_MB))
+        if [ "$PEAK_VRAM_MB" -lt 1024 ]; then PEAK_VRAM_MB=1024; fi
+        echo "[*] GPU has $(awk "BEGIN{printf \"%.1f\", $_free/1024}") GB free out of $(awk "BEGIN{printf \"%.1f\", $_total/1024}") GB total."
+        echo "[*] Reserving ${VRAM_BUFFER_MB} MB buffer for OS/driver -> using ${PEAK_VRAM_MB} MB as peak VRAM budget."
     else
         PEAK_VRAM_MB=30720
         echo "[!] nvidia-smi not found, defaulting to ${PEAK_VRAM_MB} MB"
@@ -179,8 +182,15 @@ for i in "${!MODEL_NAMES[@]}"; do
 
             printf " TPS=%s  TTFT=%smsec\n" "$tps" "$ttft"
         else
-            printf " FAILED (see %s)\n" "$log_file"
-                if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: Run failed. Use --continue-on-error to skip failures."; exit 1; fi
+            exit_code=$?
+            if [ "$exit_code" -eq 139 ] || [ "$exit_code" -eq 134 ]; then
+                printf " SEGFAULT (exit %d) -- VRAM budget %s MB likely too high for this GPU.\n" "$exit_code" "$PEAK_VRAM_MB"
+                echo "    [!] ERROR: llama-cli crashed (segfault). The -mva budget exceeds usable VRAM."
+                echo "    [!] Try lowering with: --peak-vram-mb <value>  (current: ${PEAK_VRAM_MB})"
+            else
+                printf " FAILED (exit %d, see %s)\n" "$exit_code" "$log_file"
+            fi
+            if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: Run failed. Use --continue-on-error to skip failures."; exit 1; fi
         fi
 
         echo "${model_name},${ctx_k}K,${PEAK_VRAM_MB},${VRAM_LABEL},${tps},${ttft}" >> "$OUTPUT_CSV"
