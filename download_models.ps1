@@ -100,13 +100,13 @@ if (ShouldDownload "qwen-30b") {
 
 if (ShouldDownload "qwen-235b") {
     Write-Host "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
-    hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir (Join-Path $ModelsRoot "Qwen3-235B-A22B")
+    huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir (Join-Path $ModelsRoot "Qwen3-235B-A22B")
     Write-Host ""
 }
 
 if (ShouldDownload "cosmos-reason1") {
     Write-Host "[>] Downloading Cosmos-Reason1-7B-GGUF ..."
-    hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir (Join-Path $ModelsRoot "cosmos_reason1")
+    huggingface-cli download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir (Join-Path $ModelsRoot "cosmos_reason1")
     Write-Host ""
 }
 

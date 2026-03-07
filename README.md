@@ -899,12 +899,12 @@ All models must be placed in the `gguf_models/` directory before running any exp
 | `mistral-nemo-minitron-4b-128k-instruct-f16` | [NVIDIA ACE (4B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
 | `mistral-nemo-minitron-8b-128k-instruct-f16` | [NVIDIA ACE (8B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
 | `Qwen3-30B-A3B-Instruct-2507-q4` | [Hugging Face (Q4_0)](https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf?download=true) | Click the URL to download the single GGUF file, place it in gguf_models/ |
-| `Qwen3-235B-A22B-Instruct-2507-q2_k` | [Hugging Face (Q2_K)](https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/tree/main/Q2_K) | `hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir gguf_models/Qwen3-235B-A22B` |
-| `Cosmos-Reason1` | [Hugging Face (7B-GGUF)](https://huggingface.co/deepshekhar03/Cosmos-Reason1-7B-GGUF/tree/main) | `hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir gguf_models/cosmos_reason1` |
+| `Qwen3-235B-A22B-Instruct-2507-q2_k` | [Hugging Face (Q2_K)](https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/tree/main/Q2_K) | `huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir gguf_models/Qwen3-235B-A22B` |
+| `Cosmos-Reason1` | [Hugging Face (7B-GGUF)](https://huggingface.co/deepshekhar03/Cosmos-Reason1-7B-GGUF/tree/main) | `huggingface-cli download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir gguf_models/cosmos_reason1` |
 
 #### Setting Up the Hugging Face CLI
 
-The `hf download` commands above require Python 3.12+ and the HF Hub CLI. Create a venv and install:
+The download commands above require Python 3.12+ and `huggingface_hub[cli]<1.0`. Create a venv and install:
 
 **Windows (PowerShell):**
 ```powershell
@@ -912,7 +912,19 @@ winget install Python.Python.3.12          # skip if already installed
 python -m venv hf_venv; .\hf_venv\Scripts\Activate.ps1
 ```
 
-After installing the CLI (see below), you can download all models at once (or just one):
+**Linux / macOS:**
+```bash
+sudo apt install -y python3.12 python3.12-venv   # Ubuntu/Debian (macOS: brew install python@3.12)
+python3.12 -m venv hf_venv && source hf_venv/bin/activate
+```
+
+**Then (all platforms):**
+```bash
+pip install "huggingface_hub[cli]<1.0"
+huggingface-cli login   # requires a token from https://huggingface.co/settings/tokens
+```
+
+After installing the CLI, you can download all models at once (or just one):
 ```powershell
 .\download_models.ps1                     # all models
 .\download_models.ps1 -Model qwen-30b     # only qwen-30b
@@ -922,20 +934,9 @@ chmod +x download_models.sh
 ./download_models.sh                          # all models
 ./download_models.sh --filter-model qwen-30b  # only qwen-30b
 ```
+
 > Valid model names: `nemo-4b`, `nemo-8b`, `qwen-30b`, `qwen-235b`, `cosmos-reason1`. The NVIDIA ACE models (`nemo-4b`, `nemo-8b`) are downloaded as `.7z` archives and auto-extracted if 7-Zip is installed. If not, install it first: `winget install 7zip.7zip` (Windows) or `sudo apt install p7zip-full` (Linux).
 
-**Linux / macOS:**
-```bash
-# Ubuntu/Debian: sudo apt install -y python3.12 python3.12-venv
-# macOS:         brew install python@3.12
-python3.12 -m venv hf_venv && source hf_venv/bin/activate
-```
-
-**Then (all platforms):**
-```bash
-pip install huggingface_hub[cli]
-huggingface-cli login   # requires a token from https://huggingface.co/settings/tokens
-```
 
 ---
 

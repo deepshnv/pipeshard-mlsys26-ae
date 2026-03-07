@@ -96,13 +96,13 @@ fi
 
 if should_download "qwen-235b"; then
     echo "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
-    hf download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir "$MODELS_ROOT/Qwen3-235B-A22B"
+    huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir "$MODELS_ROOT/Qwen3-235B-A22B"
     echo ""
 fi
 
 if should_download "cosmos-reason1"; then
     echo "[>] Downloading Cosmos-Reason1-7B-GGUF ..."
-    hf download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir "$MODELS_ROOT/cosmos_reason1"
+    huggingface-cli download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir "$MODELS_ROOT/cosmos_reason1"
     echo ""
 fi
 
