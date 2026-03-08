@@ -558,6 +558,7 @@ python paper_results/compare_table9.py      # absolute TPS
 
 If you find our work useful, please consider citing it as follows:
 
+```bibtex
 @inproceedings{ukarande:26:mlsys,
    title = "Efficient, VRAM-Constrained xLM Inference on Clients",
    author = "Aditya Ukarande and Deep Shekhar and Marc Blackstein and Ram Rangan",
