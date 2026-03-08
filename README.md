@@ -10,7 +10,7 @@ We have implemented both pipelined sharding and VLMOpt in [llama.cpp tag b6097](
 
 ## Requirements
 
-1. **Hardware**: An x86_64 machine with a discrete GPU (preferably an NVIDIA RTX series GPU).
+1. **Hardware**: An x86_64 machine with an NVIDIA RTX (ideally, an RTX 5090 or 5070 TI) or any A100 or newer compute class GPU.
 
 2. **NVIDIA Driver & CUDA Toolkit** (for NVIDIA GPUs):
    - **Windows**:
@@ -553,3 +553,14 @@ python paper_results/compare_table9.py      # absolute TPS
 ```
 
 > **Note:** Speedup comparisons (Figures 2, 7 and Table 8) are hardware-independent and should match closely. Absolute metric comparisons (Tables 4, 9) will vary across GPUs — the directional trends should remain consistent.
+
+# Citation
+
+If you find our work useful, please consider citing it as follows:
+
+@inproceedings{ukarande:26:mlsys,
+   title = "Efficient, VRAM-Constrained xLM Inference on Clients",
+   author = "Aditya Ukarande and Deep Shekhar and Marc Blackstein and Ram Rangan",
+   booktitle = "Proceedings of the 9th Machine Learning Systems (MLSys) Conference",
+   month = "May",
+   year = "2026" }
