@@ -5,7 +5,8 @@
 #>
 [CmdletBinding()]
 param(
-    [switch]$TerminateOnFailure
+    [switch]$TerminateOnFailure,
+    [switch]$CompareAbsMetricsToo
 )
 
 $ErrorActionPreference = if ($TerminateOnFailure) { "Stop" } else { "Continue" }
@@ -47,4 +48,6 @@ if ($failed.Count -gt 0) {
 
 Write-Host ""
 Write-Host "=== Comparing results against paper ==="
-python compare_all_results.py
+$compareArgs = @()
+if ($CompareAbsMetricsToo) { $compareArgs += "--compare-abs-metrics-too" }
+python compare_all_results.py @compareArgs

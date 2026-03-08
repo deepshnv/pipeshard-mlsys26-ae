@@ -297,6 +297,7 @@ python3 compare_all_results.py   # compare reproduced results against paper
 | `-FilterModel <name>` | `--filter-model <name>` | Run only this model (Tables 4, Figure 2; download script) |
 | `-TerminateOnFailure` | `--terminate-on-failure` | Stop on first error instead of logging and continuing (default: log and continue) |
 | `-SkipProfiling` | `--skip-profiling` | Skip hardware profiler runs |
+| `-CompareAbsMetricsToo` | `--compare-abs-metrics-too` | Also compare absolute TPS/TTFT values (Tables 4, 9) after reproduction. By default only speedup comparisons (Figures 2, 7, Table 8) are run. |
 
 ---
 
@@ -533,15 +534,22 @@ After running any or all reproduction scripts, compare the output CSVs against t
 python compare_all_results.py
 ```
 
-This runs all available comparisons (Tables 4, 8, 9 and Figure 7) and prints **PASS** for each metric within 90% of the paper's value, or the achieved ratio (e.g., `0.76x of paper`) for those below. Comparisons are automatically skipped for any results CSV that hasn't been generated yet.
+By default this runs **speedup comparisons** only (Figure 2, Table 8, Figure 7) — these compare hardware-independent speedup ratios and should match across different GPUs. It prints **PASS** for each metric within 90% of the paper's value, or the achieved ratio (e.g., `0.76x of paper`) for those below. Comparisons are automatically skipped for any results CSV that hasn't been generated yet.
+
+To also compare **absolute TPS/TTFT values** (Table 4, Table 9), which are hardware-dependent and expected to vary across machines:
+
+```bash
+python compare_all_results.py --compare-abs-metrics-too
+```
 
 Individual comparisons can also be run directly:
 
 ```bash
-python paper_results/compare_table4.py
-python paper_results/compare_table8.py
-python paper_results/compare_table9.py
-python paper_results/compare_figure7.py
+python paper_results/compare_figure2.py     # TTFT/TPS/E2EL speedups
+python paper_results/compare_table8.py      # E2EL speedups (VLM)
+python paper_results/compare_figure7.py     # TPS speedups (batching)
+python paper_results/compare_table4.py      # absolute TPS/TTFT
+python paper_results/compare_table9.py      # absolute TPS
 ```
 
-> **Note:** Absolute performance numbers vary across hardware, so some metrics may fall below the 0.9x threshold on different GPUs. The directional trends (speedups increasing with VRAM budget, scaling with batch size, etc.) should remain consistent.
+> **Note:** Speedup comparisons (Figures 2, 7 and Table 8) are hardware-independent and should match closely. Absolute metric comparisons (Tables 4, 9) will vary across GPUs — the directional trends should remain consistent.

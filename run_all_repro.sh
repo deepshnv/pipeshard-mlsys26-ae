@@ -6,8 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 TOF_FLAG=""
-if [[ "${1:-}" == "--terminate-on-failure" ]]; then
-    TOF_FLAG="--terminate-on-failure"
+ABS_FLAG=""
+for arg in "$@"; do
+    case "$arg" in
+        --terminate-on-failure) TOF_FLAG="--terminate-on-failure" ;;
+        --compare-abs-metrics-too) ABS_FLAG="--compare-abs-metrics-too" ;;
+    esac
+done
+if [ -n "$TOF_FLAG" ]; then
     echo "=== Running all reproduction scripts (terminate-on-failure mode) ==="
 else
     echo "=== Running all reproduction scripts ==="
@@ -44,4 +50,4 @@ fi
 
 echo ""
 echo "=== Comparing results against paper ==="
-python3 compare_all_results.py
+python3 compare_all_results.py $ABS_FLAG

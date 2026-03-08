@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Run all comparison scripts and print a combined summary.
 
-Compares reproduced results against paper reference values for all tables
-and figures. Each comparison uses a 0.9x threshold — PASS means the
-reproduced value is within 90% of the paper value.
+By default, only speedup comparisons are run (Figure 2, Table 8, Figure 7).
+Use --compare-abs-metrics-too to also compare absolute TPS/TTFT values
+(Table 4, Table 9), which are hardware-dependent and expected to vary.
 
 Usage:
     python compare_all_results.py
+    python compare_all_results.py --compare-abs-metrics-too
 """
 
+import argparse
 import os
 import subprocess
 import sys
@@ -16,42 +18,45 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PAPER_DIR = os.path.join(SCRIPT_DIR, "paper_results")
 
-COMPARISONS = [
+SPEEDUP_COMPARISONS = [
     {
-        "name": "Table 4",
-        "script": os.path.join(PAPER_DIR, "compare_table4.py"),
-        "repro": os.path.join(PAPER_DIR, "table4_results.csv"),
+        "name": "Figure 2  (TTFT/TPS/E2EL speedups)",
+        "script": os.path.join(PAPER_DIR, "compare_figure2.py"),
+        "repro": os.path.join(PAPER_DIR, "figure2_results.csv"),
     },
     {
-        "name": "Table 8",
+        "name": "Table 8   (E2EL speedups)",
         "script": os.path.join(PAPER_DIR, "compare_table8.py"),
         "repro": os.path.join(PAPER_DIR, "table8_results.csv"),
     },
     {
-        "name": "Table 9",
-        "script": os.path.join(PAPER_DIR, "compare_table9.py"),
-        "repro": os.path.join(PAPER_DIR, "table9_results.csv"),
-    },
-    {
-        "name": "Figure 7",
+        "name": "Figure 7  (TPS speedups)",
         "script": os.path.join(PAPER_DIR, "compare_figure7.py"),
         "repro": os.path.join(PAPER_DIR, "figure7_results.csv"),
     },
 ]
 
+ABS_METRIC_COMPARISONS = [
+    {
+        "name": "Table 4   (absolute TPS/TTFT)",
+        "script": os.path.join(PAPER_DIR, "compare_table4.py"),
+        "repro": os.path.join(PAPER_DIR, "table4_results.csv"),
+    },
+    {
+        "name": "Table 9   (absolute TPS)",
+        "script": os.path.join(PAPER_DIR, "compare_table9.py"),
+        "repro": os.path.join(PAPER_DIR, "table9_results.csv"),
+    },
+]
 
-def main():
-    print()
-    print("=" * 60)
-    print("  Compare All Reproduced Results vs Paper")
-    print("=" * 60)
 
+def run_comparisons(comparisons, label):
     ran = 0
-    skipped_names = []
+    skipped = []
 
-    for comp in COMPARISONS:
+    for comp in comparisons:
         if not os.path.isfile(comp["repro"]):
-            skipped_names.append(comp["name"])
+            skipped.append(comp["name"])
             continue
 
         print()
@@ -62,11 +67,55 @@ def main():
         ran += 1
         subprocess.run([sys.executable, comp["script"]], cwd=SCRIPT_DIR)
 
+    return ran, skipped
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Compare reproduced results against paper reference values."
+    )
+    parser.add_argument(
+        "--compare-abs-metrics-too",
+        action="store_true",
+        help="Also compare absolute TPS/TTFT values (Table 4, Table 9). "
+             "These are hardware-dependent and expected to vary across machines.",
+    )
+    args = parser.parse_args()
+
     print()
     print("=" * 60)
-    print(f"  Done.  Ran {ran}/{len(COMPARISONS)} comparisons.")
-    if skipped_names:
-        print(f"  Skipped (no results CSV): {', '.join(skipped_names)}")
+    print("  Compare Reproduced Results vs Paper")
+    print("=" * 60)
+
+    total_ran = 0
+    all_skipped = []
+
+    print()
+    print("  --- Speedup comparisons (hardware-independent) ---")
+    ran, skipped = run_comparisons(SPEEDUP_COMPARISONS, "speedup")
+    total_ran += ran
+    all_skipped += skipped
+
+    if args.compare_abs_metrics_too:
+        print()
+        print("  --- Absolute metric comparisons (hardware-dependent) ---")
+        ran, skipped = run_comparisons(ABS_METRIC_COMPARISONS, "absolute")
+        total_ran += ran
+        all_skipped += skipped
+    else:
+        print()
+        print("  (Skipping absolute metric comparisons for Table 4, Table 9.")
+        print("   Use --compare-abs-metrics-too to include them.)")
+
+    total_possible = len(SPEEDUP_COMPARISONS) + (
+        len(ABS_METRIC_COMPARISONS) if args.compare_abs_metrics_too else 0
+    )
+
+    print()
+    print("=" * 60)
+    print(f"  Done.  Ran {total_ran}/{total_possible} comparisons.")
+    if all_skipped:
+        print(f"  Skipped (no results CSV): {', '.join(all_skipped)}")
     print("=" * 60)
     print()
 
