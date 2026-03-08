@@ -1,0 +1,13 @@
+Resolution,RunType,VramBudget,Speedup
+480p,vlmopt,4G,1.3
+480p,vlmopt,8G,1.3
+480p,vlmopt,14G,3.5
+720p,vlmopt,4G,OOM
+720p,vlmopt,8G,1.6
+720p,vlmopt,14G,4.6
+1080p,vlmopt,4G,OOM
+1080p,vlmopt,8G,OOM
+1080p,vlmopt,14G,9.0
+1440p,vlmopt,4G,OOM
+1440p,vlmopt,8G,OOM
+1440p,vlmopt,14G,OOM

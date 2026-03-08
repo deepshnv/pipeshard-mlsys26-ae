@@ -30,9 +30,9 @@ run_step() {
 }
 
 run_step "Step 1/5: Table 4"  ./paper_results/repro_table4.sh $TOF_FLAG
-run_step "Step 2/5: Table 8"  ./paper_results/repro_table8.sh  --skip-profiling $TOF_FLAG
-run_step "Step 3/5: Table 9"  ./paper_results/repro_table9.sh  --skip-profiling $TOF_FLAG
-run_step "Step 4/5: Figure 2" ./paper_results/repro_figure2.sh --skip-profiling $TOF_FLAG
+run_step "Step 2/5: Figure 2" ./paper_results/repro_figure2.sh --skip-profiling $TOF_FLAG
+run_step "Step 3/5: Table 8"  ./paper_results/repro_table8.sh  --skip-profiling $TOF_FLAG
+run_step "Step 4/5: Table 9"  ./paper_results/repro_table9.sh  --skip-profiling $TOF_FLAG
 run_step "Step 5/5: Figure 7" ./paper_results/repro_figure7.sh --skip-profiling $TOF_FLAG
 
 echo "=== All reproduction scripts complete ==="
@@ -41,3 +41,7 @@ if [ -n "$FAILED" ]; then
 else
     echo "All scripts succeeded."
 fi
+
+echo ""
+echo "=== Comparing results against paper ==="
+python3 compare_all_results.py

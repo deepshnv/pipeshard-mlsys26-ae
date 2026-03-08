@@ -16,9 +16,9 @@ Write-Host ""
 
 $scripts = @(
     @{ Name = "Table 4";  Cmd = ".\paper_results\repro_table4.ps1 -TerminateOnFailure:`$$TerminateOnFailure" },
+    @{ Name = "Figure 2"; Cmd = ".\paper_results\repro_figure2.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
     @{ Name = "Table 8";  Cmd = ".\paper_results\repro_table8.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
     @{ Name = "Table 9";  Cmd = ".\paper_results\repro_table9.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
-    @{ Name = "Figure 2"; Cmd = ".\paper_results\repro_figure2.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
     @{ Name = "Figure 7"; Cmd = ".\paper_results\repro_figure7.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" }
 )
 
@@ -44,3 +44,7 @@ if ($failed.Count -gt 0) {
 } else {
     Write-Host "All scripts succeeded." -ForegroundColor Green
 }
+
+Write-Host ""
+Write-Host "=== Comparing results against paper ==="
+python compare_all_results.py

@@ -868,16 +868,18 @@ These flags control vision encoder (CLIP) VRAM optimizations in `llama-mtmd-cli`
 
 > **Note on reproducibility:** Absolute performance numbers will vary across hardware; the relative speedups and directional trends should remain consistent. For best results, close other GPU-intensive applications (browsers, game launchers, other ML workloads, etc.) before running benchmarks -- any process consuming VRAM reduces the budget available to pipeline sharding and can degrade performance.
 
-**One-command run all:** First, download all required models, then run all 5 reproduction scripts sequentially:
+**One-command run all:** First, download all required models, then run all 5 reproduction scripts sequentially, then compare against paper:
 ```powershell
 .\download_models.ps1        # Windows – download/verify all models
-.\run_all_repro.ps1          # Windows (terminates on first failure by default)
+.\run_all_repro.ps1          # Windows
+python compare_all_results.py   # compare reproduced results against paper
 ```
 ```bash
 # Linux/macOS – make scripts executable first
 chmod +x download_models.sh run_all_repro.sh paper_results/*.sh
 ./download_models.sh
 ./run_all_repro.sh
+python3 compare_all_results.py   # compare reproduced results against paper
 ```
 
 **Common flags** available on all repro scripts:
@@ -1110,6 +1112,29 @@ chmod +x paper_results/repro_figure7.sh
 | `-SkipProfiling` / `--skip-profiling` | Skip profiler runs |
 
 The output CSV (`paper_results/figure7_results.csv`) contains columns: `Model, VramBudget, VramMB, BatchSize, BaseNGL, BaseTPS, PipeshardTPS, TPSSpeedup`. Speedups should generally increase with batch size at higher VRAM budgets. Compare against the reference in `paper_results/figure7.png`.
+
+---
+
+### Comparing Reproduced Results Against Paper
+
+After running any or all reproduction scripts, compare the output CSVs against the paper's reference values:
+
+```bash
+python compare_all_results.py
+```
+
+This runs all available comparisons (Tables 4, 8, 9 and Figure 7) and prints **PASS** for each metric within 90% of the paper's value, or the achieved ratio (e.g., `0.76x of paper`) for those below. Comparisons are automatically skipped for any results CSV that hasn't been generated yet.
+
+Individual comparisons can also be run directly:
+
+```bash
+python paper_results/compare_table4.py
+python paper_results/compare_table8.py
+python paper_results/compare_table9.py
+python paper_results/compare_figure7.py
+```
+
+> **Note:** Absolute performance numbers vary across hardware, so some metrics may fall below the 0.9x threshold on different GPUs. The directional trends (speedups increasing with VRAM budget, scaling with batch size, etc.) should remain consistent.
 
 ---
 

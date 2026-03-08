@@ -33,16 +33,10 @@ RUN cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=OFF \
 
 ENV PATH="/workspace/build/bin:${PATH}"
 
-RUN chmod +x download_models.sh \
-    paper_results/repro_table4.sh \
-    paper_results/repro_table8.sh \
-    paper_results/repro_table9.sh \
-    paper_results/repro_figure2.sh \
-    paper_results/repro_figure7.sh
-
 VOLUME ["/workspace/gguf_models"]
 
 CMD ["bash", "-c", "\
+    chmod +x download_models.sh run_all_repro.sh paper_results/*.sh && \
     if [ -z \"$(find gguf_models -name '*.gguf' 2>/dev/null)\" ]; then \
         echo '=== No models found in gguf_models/ -- downloading ===' && \
         ./download_models.sh; \
@@ -55,17 +49,20 @@ CMD ["bash", "-c", "\
     echo '--- Step 1/5: Table 4 ---' && \
     ./paper_results/repro_table4.sh && \
     echo '' && \
-    echo '--- Step 2/5: Table 8 ---' && \
+    echo '--- Step 2/5: Figure 2 ---' && \
+    ./paper_results/repro_figure2.sh --skip-profiling && \
+    echo '' && \
+    echo '--- Step 3/5: Table 8 ---' && \
     ./paper_results/repro_table8.sh --skip-profiling && \
     echo '' && \
-    echo '--- Step 3/5: Table 9 ---' && \
+    echo '--- Step 4/5: Table 9 ---' && \
     ./paper_results/repro_table9.sh --skip-profiling && \
-    echo '' && \
-    echo '--- Step 4/5: Figure 2 ---' && \
-    ./paper_results/repro_figure2.sh --skip-profiling && \
     echo '' && \
     echo '--- Step 5/5: Figure 7 ---' && \
     ./paper_results/repro_figure7.sh --skip-profiling && \
     echo '' && \
-    echo '=== All reproduction scripts complete ===' \
+    echo '=== All reproduction scripts complete ===' && \
+    echo '' && \
+    echo '=== Comparing results against paper ===' && \
+    python3 compare_all_results.py \
 "]

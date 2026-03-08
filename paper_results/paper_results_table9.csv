@@ -1,0 +1,13 @@
+Model,VramBudget,VramMB,BatchSize,TPS
+qwen30b,2G,2048,1,24.6
+qwen30b,2G,2048,4,70.7
+qwen30b,2G,2048,16,103.6
+qwen30b,2G,2048,64,35.6
+qwen30b,8G,8192,1,30.5
+qwen30b,8G,8192,4,79.5
+qwen30b,8G,8192,16,142.8
+qwen30b,8G,8192,64,177.4
+qwen30b,16G,16384,1,45.6
+qwen30b,16G,16384,4,97.9
+qwen30b,16G,16384,16,228.8
+qwen30b,16G,16384,64,286.5
