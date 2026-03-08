@@ -5,7 +5,7 @@ This is the README for the artifact evaluation process for our **MLSys26 Paper:*
 We introduce a technique called pipelined sharding to enable running large LLMs (as well as language decoders of VLMs) at user-specified VRAM budgets through a combination of benchmark profile driven CPU-GPU hybrid scheduling and carefully orchestrated pipelined PCIe copies to avoid exposing copy costs. 
 VLMOpt provides complementary VRAM-reduction optimizations for the vision encoder to enable VLMs to handle high-resolution image inference at user-specified VRAM budgets. 
 
-We have implemented both pipelined sharding and VLMOpt in [llama.cpp tag b6097](https://github.com/deepshnv/pipeshard-mlsys26-ae/main/llama-cpp-README.md
+We have implemented both pipelined sharding and VLMOpt in [llama.cpp tag b6097](https://github.com/deepshnv/pipeshard-mlsys26-ae/blob/main/llama-cpp-README.md
 
 
 ## Requirements
