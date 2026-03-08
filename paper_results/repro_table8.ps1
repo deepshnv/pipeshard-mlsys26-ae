@@ -26,7 +26,7 @@ param(
     [string]$OutputCsv   = ".\paper_results\table8_results.csv",
     [string]$VramBudgets = "4096,8192,14848",
     [switch]$SkipProfiling,
-    [switch]$ContinueOnError
+    [switch]$TerminateOnFailure
 )
 
 $ErrorActionPreference = "Stop"
@@ -113,7 +113,7 @@ function Run-Inference($cliArgs, $runLabel) {
 
     if ($exitCode -ne 0) {
         Write-Host " FAILED (exit code $exitCode)" -ForegroundColor Red
-        if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
+        if ($TerminateOnFailure) { Write-Error "Run failed." }
         return @{
             'Encode(msec)' = "N/A"; 'Decode(msec)' = "N/A"; 'TTFT(msec)' = "N/A"
             TPS = "N/A"; 'E2EL(msec)' = "N/A"

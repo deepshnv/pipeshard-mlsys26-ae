@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Runs all reproduction scripts (Tables 4, 5, 8, 9, Figure 2) sequentially.
-# Default: terminates on first failure. Use --continue-on-error to log and continue.
+# Runs all reproduction scripts (Tables 4, 8, 9, Figures 2, 7) sequentially.
+# Default: logs errors and continues. Use --terminate-on-failure to stop on first error.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-COE_FLAG=""
-if [[ "${1:-}" == "--continue-on-error" ]]; then
-    COE_FLAG="--continue-on-error"
-    echo "=== Running all reproduction scripts (continue-on-error mode) ==="
+TOF_FLAG=""
+if [[ "${1:-}" == "--terminate-on-failure" ]]; then
+    TOF_FLAG="--terminate-on-failure"
+    echo "=== Running all reproduction scripts (terminate-on-failure mode) ==="
 else
     echo "=== Running all reproduction scripts ==="
 fi
@@ -24,16 +24,16 @@ run_step() {
     else
         FAILED="$FAILED $name"
         echo "  FAILED: $name"
-        if [ -z "$COE_FLAG" ]; then echo "ERROR: Aborting. Use --continue-on-error to continue past failures."; exit 1; fi
+        if [ -n "$TOF_FLAG" ]; then echo "ERROR: Aborting due to --terminate-on-failure."; exit 1; fi
         echo ""
     fi
 }
 
-run_step "Step 1/5: Table 4"  ./paper_results/repro_table4.sh $COE_FLAG
-run_step "Step 2/5: Table 5"  ./paper_results/repro_table5.sh  --skip-profiling $COE_FLAG
-run_step "Step 3/5: Table 8"  ./paper_results/repro_table8.sh  --skip-profiling $COE_FLAG
-run_step "Step 4/5: Table 9"  ./paper_results/repro_table9.sh  --skip-profiling $COE_FLAG
-run_step "Step 5/5: Figure 2" ./paper_results/repro_figure2.sh --skip-profiling $COE_FLAG
+run_step "Step 1/5: Table 4"  ./paper_results/repro_table4.sh $TOF_FLAG
+run_step "Step 2/5: Table 8"  ./paper_results/repro_table8.sh  --skip-profiling $TOF_FLAG
+run_step "Step 3/5: Table 9"  ./paper_results/repro_table9.sh  --skip-profiling $TOF_FLAG
+run_step "Step 4/5: Figure 2" ./paper_results/repro_figure2.sh --skip-profiling $TOF_FLAG
+run_step "Step 5/5: Figure 7" ./paper_results/repro_figure7.sh --skip-profiling $TOF_FLAG
 
 echo "=== All reproduction scripts complete ==="
 if [ -n "$FAILED" ]; then

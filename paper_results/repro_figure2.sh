@@ -18,7 +18,7 @@ OUTPUT_CSV="${SCRIPT_DIR}/figure2_results.csv"
 MAX_VRAM_GB=32
 SKIP_PROFILING=false
 FILTER_MODEL=""
-CONTINUE_ON_ERROR=false
+TERMINATE_ON_FAILURE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
         --max-vram-gb)    MAX_VRAM_GB="$2"; shift 2 ;;
         --skip-profiling) SKIP_PROFILING=true; shift ;;
         --filter-model)   FILTER_MODEL="$2"; shift 2 ;;
-        --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
+        --terminate-on-failure) TERMINATE_ON_FAILURE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -366,7 +366,7 @@ for i in "${!MODEL_NAMES[@]}"; do
                 log=$(mktemp)
                 "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -ngl "$ngl" > "$log" 2>&1
                 _rc=$?
-                if [ "$_rc" -ne 0 ] && [ "$CONTINUE_ON_ERROR" = false ]; then printf " FAILED\nERROR: Baseline failed (exit %d). Use --continue-on-error to skip.\n" "$_rc"; rm -f "$log"; exit 1; fi
+                if [ "$_rc" -ne 0 ] && [ "$TERMINATE_ON_FAILURE" = true ]; then printf " FAILED\nERROR: Baseline failed (exit %d).\n" "$_rc"; rm -f "$log"; exit 1; fi
                 b_ttft=$(grep -oP "prompt eval time\s*=\s*\K[\d.]+" "$log" || echo "0")
                 b_tps=$(grep "eval time" "$log" | grep -v "prompt" | grep -oP "[\d.]+\s*tokens per second" | grep -oP "[\d.]+" || echo "0")
                 b_e2el=$(awk "BEGIN { t=$b_tps; printf \"%.1f\", $b_ttft + (t>0 ? ($GEN_TOKENS/t)*1000 : 0) }")
@@ -388,7 +388,7 @@ for i in "${!MODEL_NAMES[@]}"; do
                 log=$(mktemp)
                 "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -mva "$ps_mva" -pipe-shard > "$log" 2>&1
                 _rc=$?
-                if [ "$_rc" -ne 0 ] && [ "$CONTINUE_ON_ERROR" = false ]; then printf " FAILED\nERROR: PipeShard failed (exit %d). Use --continue-on-error to skip.\n" "$_rc"; rm -f "$log"; exit 1; fi
+                if [ "$_rc" -ne 0 ] && [ "$TERMINATE_ON_FAILURE" = true ]; then printf " FAILED\nERROR: PipeShard failed (exit %d).\n" "$_rc"; rm -f "$log"; exit 1; fi
                 p_ttft=$(grep -oP "prompt eval time\s*=\s*\K[\d.]+" "$log" || echo "0")
                 p_tps=$(grep "eval time" "$log" | grep -v "prompt" | grep -oP "[\d.]+\s*tokens per second" | grep -oP "[\d.]+" || echo "0")
                 p_e2el=$(awk "BEGIN { t=$p_tps; printf \"%.1f\", $p_ttft + (t>0 ? ($GEN_TOKENS/t)*1000 : 0) }")

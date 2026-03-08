@@ -29,7 +29,7 @@ param(
     [int]$MaxVramGB      = 32,
     [string]$FilterModel = "",
     [switch]$SkipProfiling,
-    [switch]$ContinueOnError
+    [switch]$TerminateOnFailure
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,7 +43,7 @@ $AllModels = @(
 )
 
 if ($FilterModel -ne "") {
-    # Normalize common names to internal names (same as table4/table5: nemo-* -> minitron-*, qwen-* -> qwen3-*)
+    # Normalize common names to internal names (same as table4: nemo-* -> minitron-*, qwen-* -> qwen3-*)
     $filterName = $FilterModel
     if ($FilterModel -eq 'nemo-4b')   { $filterName = 'minitron-4b' }
     if ($FilterModel -eq 'nemo-8b')   { $filterName = 'minitron-8b' }
@@ -233,7 +233,7 @@ foreach ($model in $Models) {
                 $baseResult = Run-LlamaCli $baseArgs
                 if ($baseResult.ExitCode -ne 0) {
                     Write-Host " FAILED" -ForegroundColor Red
-                    if (-not $ContinueOnError) { Write-Error "Baseline run failed. Use -ContinueOnError to skip failures." }
+                    if ($TerminateOnFailure) { Write-Error "Baseline run failed." }
                 } else {
                     Write-Host " TTFT=$($baseResult.'TTFT(msec)')msec TPS=$($baseResult.TPS) E2EL=$($baseResult.'E2EL(msec)')msec"
                 }
@@ -253,7 +253,7 @@ foreach ($model in $Models) {
                 $psResult = Run-LlamaCli $psArgs
                 if ($psResult.ExitCode -ne 0) {
                     Write-Host " FAILED" -ForegroundColor Red
-                    if (-not $ContinueOnError) { Write-Error "PipeShard run failed. Use -ContinueOnError to skip failures." }
+                    if ($TerminateOnFailure) { Write-Error "PipeShard run failed." }
                 } else {
                     Write-Host " TTFT=$($psResult.'TTFT(msec)')msec TPS=$($psResult.TPS) E2EL=$($psResult.'E2EL(msec)')msec"
                 }

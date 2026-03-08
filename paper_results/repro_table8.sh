@@ -16,7 +16,7 @@ IMAGE_PATH="${SCRIPT_DIR}/dummy_image/165_4k.jpg"
 OUTPUT_CSV="${SCRIPT_DIR}/table8_results.csv"
 VRAM_BUDGETS="4096,8192,14848"
 SKIP_PROFILING=false
-CONTINUE_ON_ERROR=false
+TERMINATE_ON_FAILURE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
         --output-csv)     OUTPUT_CSV="$2"; shift 2 ;;
         --vram-budgets)   VRAM_BUDGETS="$2"; shift 2 ;;
         --skip-profiling) SKIP_PROFILING=true; shift ;;
-        --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
+        --terminate-on-failure) TERMINATE_ON_FAILURE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -154,7 +154,7 @@ for i in "${!RES_LABELS[@]}"; do
         done
     else
         printf " FAILED\n"
-        if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: Baseline run failed. Use --continue-on-error to skip failures."; exit 1; fi
+        if [ "$TERMINATE_ON_FAILURE" = true ]; then echo "ERROR: Baseline run failed."; exit 1; fi
         b_e2el=0
         for _mva in "${VRAM_BUDGETS_ARR[@]}"; do
             _vl="$((_mva / 1024))G"
@@ -199,7 +199,7 @@ for i in "${!RES_LABELS[@]}"; do
             echo "${res_label},vlmopt,${vram_label},${v_enc},${v_dec},${v_ttft},${v_tps},${v_e2el},${speedup}" >> "$OUTPUT_CSV"
         else
             printf " FAILED\n"
-            if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: VLMOpt run failed. Use --continue-on-error to skip failures."; exit 1; fi
+            if [ "$TERMINATE_ON_FAILURE" = true ]; then echo "ERROR: VLMOpt run failed."; exit 1; fi
             echo "${res_label},vlmopt,${vram_label},N/A,N/A,N/A,N/A,N/A,N/A" >> "$OUTPUT_CSV"
         fi
         rm -f "$log_file"

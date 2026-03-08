@@ -23,7 +23,7 @@ param(
     [string]$ModelsDir = ".\gguf_models",
     [string]$OutputCsv = ".\paper_results\table9_results.csv",
     [switch]$SkipProfiling,
-    [switch]$ContinueOnError
+    [switch]$TerminateOnFailure
 )
 
 $ErrorActionPreference = "Stop"
@@ -150,7 +150,7 @@ foreach ($mvaMB in $VramBudgetsMB) {
             Write-Host "      -> S_TG TPS=$tps (avg of $($lines.Count) rows)" -ForegroundColor Green
         } else {
             Write-Host "      -> FAILED (exit code $exitCode)" -ForegroundColor Red
-            if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
+            if ($TerminateOnFailure) { Write-Error "Run failed." }
         }
 
         $Results += [PSCustomObject]@{

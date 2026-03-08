@@ -18,7 +18,7 @@ CONTEXT_DIR="${SCRIPT_DIR}/context_files"
 OUTPUT_CSV="${SCRIPT_DIR}/table4_results.csv"
 SKIP_PROFILING=false
 FILTER_MODEL=""
-CONTINUE_ON_ERROR=false
+TERMINATE_ON_FAILURE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
         --output-csv)   OUTPUT_CSV="$2"; shift 2 ;;
         --skip-profiling) SKIP_PROFILING=true; shift ;;
         --filter-model) FILTER_MODEL="$2"; shift 2 ;;
-        --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
+        --terminate-on-failure) TERMINATE_ON_FAILURE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -180,7 +180,7 @@ for i in "${!MODEL_NAMES[@]}"; do
                 printf " TPS=%s  TTFT=%smsec\n" "$tps" "$ttft"
             else
                 printf " FAILED (see %s)\n" "$log_file"
-                if [ "$CONTINUE_ON_ERROR" = false ]; then echo "ERROR: Run failed. Use --continue-on-error to skip failures."; exit 1; fi
+                if [ "$TERMINATE_ON_FAILURE" = true ]; then echo "ERROR: Run failed."; exit 1; fi
             fi
 
             echo "${model_name},${ctx_k}K,${mva_mb},${vram_label},${tps},${ttft}" >> "$OUTPUT_CSV"

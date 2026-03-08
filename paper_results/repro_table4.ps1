@@ -27,7 +27,7 @@ param(
     [string]$OutputCsv   = ".\paper_results\table4_results.csv",
     [string]$FilterModel = "",
     [switch]$SkipProfiling,
-    [switch]$ContinueOnError
+    [switch]$TerminateOnFailure
 )
 
 $ErrorActionPreference = "Stop"
@@ -185,7 +185,7 @@ foreach ($model in $Models) {
 
             if ($exitCode -ne 0) {
                 Write-Host " FAILED (exit code $exitCode)" -ForegroundColor Red
-                if (-not $ContinueOnError) { Write-Error "Run failed. Use -ContinueOnError to skip failures." }
+                if ($TerminateOnFailure) { Write-Error "Run failed." }
             } else {
                 if ($output -match "prompt eval time\s*=\s*([\d.]+)\s*ms") {
                     $ttft = [math]::Round([double]$Matches[1], 1)

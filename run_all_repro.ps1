@@ -1,25 +1,25 @@
 <#
 .SYNOPSIS
-    Runs all reproduction scripts (Tables 4, 5, 8, 9, Figure 2) sequentially.
-    Default: terminates on first failure. Use -ContinueOnError to log and continue.
+    Runs all reproduction scripts (Tables 4, 8, 9, Figures 2, 7) sequentially.
+    Default: logs errors and continues. Use -TerminateOnFailure to stop on first error.
 #>
 [CmdletBinding()]
 param(
-    [switch]$ContinueOnError
+    [switch]$TerminateOnFailure
 )
 
-$ErrorActionPreference = if ($ContinueOnError) { "Continue" } else { "Stop" }
+$ErrorActionPreference = if ($TerminateOnFailure) { "Stop" } else { "Continue" }
 
 Write-Host "=== Running all reproduction scripts ==="
-if ($ContinueOnError) { Write-Host "    (ContinueOnError mode: will log errors and continue)" }
+if ($TerminateOnFailure) { Write-Host "    (TerminateOnFailure mode: will stop on first error)" }
 Write-Host ""
 
 $scripts = @(
-    @{ Name = "Table 4";  Cmd = ".\paper_results\repro_table4.ps1 -ContinueOnError:`$$ContinueOnError" },
-    @{ Name = "Table 5";  Cmd = ".\paper_results\repro_table5.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" },
-    @{ Name = "Table 8";  Cmd = ".\paper_results\repro_table8.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" },
-    @{ Name = "Table 9";  Cmd = ".\paper_results\repro_table9.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" },
-    @{ Name = "Figure 2"; Cmd = ".\paper_results\repro_figure2.ps1 -SkipProfiling -ContinueOnError:`$$ContinueOnError" }
+    @{ Name = "Table 4";  Cmd = ".\paper_results\repro_table4.ps1 -TerminateOnFailure:`$$TerminateOnFailure" },
+    @{ Name = "Table 8";  Cmd = ".\paper_results\repro_table8.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
+    @{ Name = "Table 9";  Cmd = ".\paper_results\repro_table9.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
+    @{ Name = "Figure 2"; Cmd = ".\paper_results\repro_figure2.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
+    @{ Name = "Figure 7"; Cmd = ".\paper_results\repro_figure7.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" }
 )
 
 $total = $scripts.Count
@@ -33,7 +33,7 @@ for ($i = 0; $i -lt $total; $i++) {
     } catch {
         Write-Host "  FAILED: $($s.Name) -- $_" -ForegroundColor Red
         $failed += $s.Name
-        if (-not $ContinueOnError) { Write-Error "Aborting. Use -ContinueOnError to continue past failures." }
+        if ($TerminateOnFailure) { Write-Error "Aborting due to -TerminateOnFailure." }
     }
     Write-Host ""
 }

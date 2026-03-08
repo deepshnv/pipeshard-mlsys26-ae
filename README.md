@@ -718,7 +718,7 @@ docker run --rm --gpus all nvidia/cuda:12.9.0-base-ubuntu22.04 nvidia-smi
 ```bash
 docker pull ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0
 
-# Mount your model weights directory; the container runs all 5 repro scripts (Table 4, 5, 8, 9, Figure 2)
+# Mount your model weights directory; the container runs all 5 repro scripts (Table 4, 8, 9, Figures 2, 7)
 docker run --gpus all -v /path/to/your/gguf_models:/workspace/gguf_models ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0
 ```
 
@@ -729,7 +729,7 @@ docker run --gpus all -it -v /path/to/your/gguf_models:/workspace/gguf_models gh
 
 # Inside the container:
 ./download_models.sh                              # download models (if not mounted)
-./paper_results/repro_table4.sh                   # similarly run other scripts like repro_table5.sh, repro_table8.sh, repro_table9.sh, repro_figure2.sh
+./paper_results/repro_table4.sh                   # similarly run other scripts like repro_table8.sh, repro_table9.sh, repro_figure2.sh, repro_figure7.sh
 ```
 
 > The Dockerfile is in the repository root for transparency. To rebuild locally: `docker build -t pipeshard-mlsys26-ae .`
@@ -884,8 +884,8 @@ chmod +x download_models.sh run_all_repro.sh paper_results/*.sh
 
 | Flag (PowerShell) | Flag (Bash) | Description |
 |---|---|---|
-| `-FilterModel <name>` | `--filter-model <name>` | Run only this model (Tables 4, 5, Figure 2; download script) |
-| `-ContinueOnError` | `--continue-on-error` | Log failures and continue instead of terminating (default: terminate on first error) |
+| `-FilterModel <name>` | `--filter-model <name>` | Run only this model (Tables 4, Figure 2; download script) |
+| `-TerminateOnFailure` | `--terminate-on-failure` | Stop on first error instead of logging and continuing (default: log and continue) |
 | `-SkipProfiling` | `--skip-profiling` | Skip hardware profiler runs |
 
 ---
@@ -973,37 +973,7 @@ chmod +x paper_results/repro_table4.sh
 
 ---
 
-### Step 3: Reproduce Table 5 — TPS and TTFT at Peak VRAM Capacity
-
-Table 5 measures **TPS** and **TTFT** for the same four LLMs but at a single VRAM budget: the GPU's **peak usable capacity**. The paper reports results on two machines (cli2 at 16G and cli1 at 12G); the reproduction script lets you specify your GPU's peak VRAM so results are comparable on any hardware.
-
-**Windows (PowerShell):**
-```powershell
-cd pipeshard-mlsys26-ae
-.\paper_results\repro_table5.ps1 -PeakVramMB 30720
-```
-
-**Linux / macOS:**
-```bash
-cd pipeshard-mlsys26-ae
-chmod +x paper_results/repro_table5.sh
-./paper_results/repro_table5.sh --peak-vram-mb 12288
-```
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `-PeakVramMB` / `--peak-vram-mb` | Peak VRAM budget in MB (default: `30720` = 30G) |
-| `-BinDir` / `--bin-dir` | Path to directory containing `llama-cli` and profiler executables |
-| `-ModelsDir` / `--models-dir` | Path to `gguf_models/` directory |
-| `-SkipProfiling` / `--skip-profiling` | Skip profiler runs and reuse existing profiles |
-
-The output CSV (`paper_results/table5_results.csv`) contains columns: `Model, CtxSize, PeakVramMB, PeakVram, TPS, TTFT(msec)`. Compare against the reference in `paper_results/table5.png`.
-
----
-
-### Step 4: Reproduce Table 8 — E2EL Speedups for VLM with PipeShard + VLMOpt
+### Step 3: Reproduce Table 8 — E2EL Speedups for VLM with PipeShard + VLMOpt
 
 Table 8 measures **end-to-end latency (E2EL) speedups** for the Cosmos-Reason1 VLM at 4 image resolutions (480p, 720p, 1080p, 1440p) using pipeline sharding combined with VLMOpt. For each resolution, a **baseline** run (no sharding, no VLMOpt) is compared against **VLMOpt** runs at 3 VRAM budgets (4G, 8G, 14.5G).
 
@@ -1043,7 +1013,7 @@ The output CSV (`paper_results/table8_results.csv`) contains columns: `Resolutio
 
 ---
 
-### Step 5: Reproduce Figure 2 -- TTFT/TPS/E2EL Speedups from Pipelined Sharding
+### Step 4: Reproduce Figure 2 -- TTFT/TPS/E2EL Speedups from Pipelined Sharding
 
 In the paper, each bar in Figure 2 represents the **best speedup** across ubatch sizes (1024, 2048) for a given (model, context, VRAM budget) triple.
 
@@ -1083,7 +1053,7 @@ python paper_results/plot_figure2.py --csv paper_results/figure2_results.csv --o
 
 ---
 
-### Step 6: Reproduce Table 9 — TPS vs Multi-Request Batch Size across VRAM Budgets
+### Step 5: Reproduce Table 9 — TPS vs Multi-Request Batch Size across VRAM Budgets
 
 Table 9 measures **tokens per second (TPS)** for `Qwen3-30B-A3B Q4` with multi-request batching across 3 VRAM budgets (2G, 8G, 16G). "Batch size" here means the number of **parallel 1K-context requests** processed simultaneously (not larger context files). The script uses `-np <N>` for N parallel sequences and `-kvu` for unified KV cache, which the paper finds works best for pipelined sharding due to contiguous KV cache updates reducing copy overhead.
 
@@ -1109,6 +1079,37 @@ chmod +x paper_results/repro_table9.sh
 | `-SkipProfiling` / `--skip-profiling` | Skip profiler runs |
 
 The output CSV (`paper_results/table9_results.csv`) contains columns: `Model, VramBudget, VramMB, BatchSize, TPS`. TPS should generally increase with batch size at each VRAM budget. At 2G with 64 requests, both baseline and pipelined sharding struggle to fit tensors in VRAM, so performance may plateau or regress. Compare against the reference in `paper_results/table9.png`.
+
+---
+
+### Step 6: Reproduce Figure 7 — TPS Speedups across Batch Sizes
+
+Figure 7 shows how **TPS speedups** from pipelined sharding hold and even scale across different batch sizes for `Qwen3-30B-A3B Q4` at 1K context per request with 3 VRAM budgets (2G, 8G, 16G). For a fair comparison, speedups are calculated for pipelined sharding using **unified KV** (`-kvu`) against the baseline using **non-unified KV** with NGL-capped GPU offloading.
+
+The script uses `llama-batched-bench` for both the baseline and pipelined sharding runs at batch sizes 1, 4, 16, and 64 (parallel 1K-context requests). High speedups at larger batch sizes (especially 64 requests at 8G and 16G) are due to the increased tensor sizes that push baseline to offload more to CPU, while pipeline sharding schedules the work more efficiently.
+
+**Windows (PowerShell):**
+```powershell
+cd pipeshard-mlsys26-ae
+.\paper_results\repro_figure7.ps1
+```
+
+**Linux / macOS:**
+```bash
+cd pipeshard-mlsys26-ae
+chmod +x paper_results/repro_figure7.sh
+./paper_results/repro_figure7.sh
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-BinDir` / `--bin-dir` | Path to directory containing `llama-batched-bench` and profiler executables |
+| `-ModelsDir` / `--models-dir` | Path to `gguf_models/` directory |
+| `-SkipProfiling` / `--skip-profiling` | Skip profiler runs |
+
+The output CSV (`paper_results/figure7_results.csv`) contains columns: `Model, VramBudget, VramMB, BatchSize, BaseNGL, BaseTPS, PipeshardTPS, TPSSpeedup`. Speedups should generally increase with batch size at higher VRAM budgets. Compare against the reference in `paper_results/figure7.png`.
 
 ---
 
