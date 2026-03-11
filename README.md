@@ -562,6 +562,6 @@ If you find our work useful, please consider citing it as follows:
 @inproceedings{ukarande:26:mlsys,
    title = "Efficient, VRAM-Constrained xLM Inference on Clients",
    author = "Aditya Ukarande and Deep Shekhar and Marc Blackstein and Ram Rangan",
-   booktitle = "Proceedings of the 9th Machine Learning Systems (MLSys) Conference",
+   booktitle = "Proceedings of the 9th Annual Conference on Machine Learning and Systems (MLSys)",
    month = "May",
    year = "2026" }
