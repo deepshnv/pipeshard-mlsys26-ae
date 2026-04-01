@@ -121,33 +121,9 @@ if (ShouldDownload "qwen-235b") {
         Remove-Item (Join-Path $qwen235Dir ".cache") -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # Try merge; if it fails or tool not found, symlink shard 1 (llama.cpp auto-discovers remaining shards)
-    if ((Test-Path $shard1Path) -and -not (Test-Path $qwen235Expected)) {
-        $ggufSplit = $null
-        foreach ($name in @("llama-gguf-split.exe", "gguf-split.exe")) {
-            $candidate = Join-Path $PSScriptRoot "build\bin\Release\$name"
-            if (Test-Path $candidate) { $ggufSplit = $candidate; break }
-            $candidate = Join-Path $PSScriptRoot "build\bin\$name"
-            if (Test-Path $candidate) { $ggufSplit = $candidate; break }
-        }
-        if (-not $ggufSplit) { $ggufSplit = (Get-Command llama-gguf-split -ErrorAction SilentlyContinue).Source }
-        if (-not $ggufSplit) { $ggufSplit = (Get-Command gguf-split -ErrorAction SilentlyContinue).Source }
-
-        $merged = $false
-        if ($ggufSplit) {
-            Write-Host "    Merging split shards into single GGUF (this may take a while) ..."
-            & $ggufSplit --merge $shard1Path $qwen235Expected
-            if (Test-Path $qwen235Expected) {
-                Get-ChildItem -Path $qwen235Dir -Filter "*-of-*.gguf" | Remove-Item -Force
-                Write-Host "    Merged -> $qwen235Expected"
-                $merged = $true
-            }
-        }
-        if (-not $merged) {
-            Write-Host "    Creating symlink (merge skipped/failed; llama.cpp loads split shards natively) ..."
-            New-Item -ItemType SymbolicLink -Path $qwen235Expected -Target $shard1Path -Force | Out-Null
-            Write-Host "    Symlinked $shard1Name -> $(Split-Path $qwen235Expected -Leaf)"
-        }
+    # No merge or symlink needed — repro scripts auto-detect split shards via *00001-of-*.gguf
+    if (Test-Path $shard1Path) {
+        Write-Host "    Split shards ready (no merge needed; llama.cpp loads splits natively)."
     }
     Write-Host ""
 }

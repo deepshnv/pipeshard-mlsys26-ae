@@ -294,6 +294,7 @@ These flags control vision encoder (CLIP) VRAM optimizations in `llama-mtmd-cli`
 .\download_models.ps1        # Windows – download/verify all models
 .\run_all_repro.ps1          # Windows
 python compare_all_results.py   # compare reproduced results against paper
+python compare_all_results.py --compare-abs-metrics-too  # also compare absolute TPS/TTFT values (Tables 4, 9) in addition to speedup metrics
 ```
 ```bash
 # Linux/macOS – make scripts executable first
@@ -301,6 +302,7 @@ chmod +x download_models.sh run_all_repro.sh paper_results/*.sh
 ./download_models.sh
 ./run_all_repro.sh
 python3 compare_all_results.py   # compare reproduced results against paper
+python compare_all_results.py --compare-abs-metrics-too  # also compare absolute TPS/TTFT values (Tables 4, 9) in addition to speedup metrics
 ```
 
 **Common flags** available on all repro scripts:
@@ -328,12 +330,11 @@ All models must be placed in the `gguf_models/` directory before running any exp
 | `Qwen3-235B-A22B-Instruct-2507-q2_k` | [Hugging Face (Q2_K)](https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/tree/main/Q2_K) | Download the two split shards into `gguf_models/Qwen3-235B-A22B/`; the download script auto-creates a symlink so llama.cpp loads them natively (no merge needed). See note below. |
 | `Cosmos-Reason1` | [Hugging Face (7B-GGUF)](https://huggingface.co/deepshekhar03/Cosmos-Reason1-7B-GGUF/tree/main) | `huggingface-cli download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir gguf_models/cosmos_reason1` |
 
-> **Note on Qwen3-235B (~85 GB):** This model is distributed as two split GGUF shards. The download script downloads both shards and creates a symlink (`Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf` -> shard 1) so that all repro scripts work without merging. llama.cpp automatically discovers and loads all shards from the same directory. If downloading manually, use `wget` instead of `huggingface-cli` to avoid the HF cache doubling disk usage:
+> **Note on Qwen3-235B (~85 GB):** This model is distributed as two split GGUF shards. No merge is needed -- llama.cpp and the repro scripts automatically detect and load split shards from the same directory. The download script uses `wget` (when available) instead of `huggingface-cli` to avoid the HF cache doubling disk usage. If downloading manually:
 > ```bash
 > cd gguf_models/Qwen3-235B-A22B
 > wget -O Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf "https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/resolve/main/Q2_K/Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf"
 > wget -O Qwen3-235B-A22B-Instruct-2507-Q2_K-00002-of-00002.gguf "https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/resolve/main/Q2_K/Qwen3-235B-A22B-Instruct-2507-Q2_K-00002-of-00002.gguf"
-> ln -s Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf
 > ```
 
 ### Setting Up the Hugging Face CLI

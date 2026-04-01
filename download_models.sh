@@ -125,10 +125,9 @@ if should_download "qwen-235b"; then
         rm -rf "$QWEN235_DIR/.cache" 2>/dev/null || true
     fi
 
-    # Symlink the expected name to shard 1 (llama.cpp auto-discovers remaining shards)
-    if [ -f "$SHARD1_PATH" ] && [ ! -f "$QWEN235_EXPECTED" ]; then
-        ln -s "$SHARD1_NAME" "$QWEN235_EXPECTED"
-        echo "    Symlinked $SHARD1_NAME -> $(basename "$QWEN235_EXPECTED")"
+    # No merge or symlink needed — repro scripts auto-detect split shards via *00001-of-*.gguf
+    if [ -f "$SHARD1_PATH" ]; then
+        echo "    Split shards ready (no merge needed; llama.cpp loads splits natively)."
     fi
     echo ""
 fi

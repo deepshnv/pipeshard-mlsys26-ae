@@ -50,7 +50,7 @@ if [ ! -f "$LLAMA_CLI" ]; then echo "ERROR: llama-cli not found at $LLAMA_CLI"; 
 
 MODEL_NAMES=("minitron-4b"  "minitron-8b"  "qwen3-30b"      "qwen3-235b")
 MODEL_DIRS=( "minitron4B"   "minitron8B"   "Qwen3-30B-A3B"  "Qwen3-235B-A22B")
-MODEL_FILES=("mn-minitron-4b-128k-instruct-v2_f16.gguf" "mn-minitron-8b-128k-instruct-v2_f16.gguf" "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf" "Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf")
+MODEL_FILES=("mn-minitron-4b-128k-instruct-v2_f16.gguf" "mn-minitron-8b-128k-instruct-v2_f16.gguf" "Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf" "")
 MODEL_MAXNGL=(35 41 49 36)
 
 CTX_SIZES=(1 4 16 64)
