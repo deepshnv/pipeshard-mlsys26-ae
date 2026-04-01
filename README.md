@@ -74,6 +74,12 @@ cmake --build build --config Release -j16
 On Windows, the CMake configure step also generates a Visual Studio solution (`build/llama.cpp.sln`) that can be opened and built directly in Visual Studio. Binaries are placed in `build/bin/Release/` (Windows) or `build/bin/` (Linux/macOS).
 
 > All development and testing for our paper was done on Windows; we recommend Windows for the smoothest reproduction experience. That said, llama.cpp and our algorithmic changes are platform-independent and should build and run on Linux/macOS as well.
+```
+
+> **Linux shared library note:** If you get `error while loading shared libraries: libllama.so: cannot open shared object file` when running any binary, set `LD_LIBRARY_PATH` to include the build output directory:
+> ```bash
+> export LD_LIBRARY_PATH=$(pwd)/build/src:$LD_LIBRARY_PATH
+> ```
 
 ### Option B: Pre-built Release Binaries (Windows x86_64)
 
@@ -96,17 +102,24 @@ A pre-built Docker image with all dependencies and compiled binaries is availabl
 <details>
 <summary><strong>One-time setup: Docker + NVIDIA GPU support</strong></summary>
 
-1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (enable WSL 2 backend on Windows, restart after install).
-2. Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) inside WSL2:
+1. Install
+ 
+	a. On windows: [Docker Desktop](https://www.docker.com/products/docker-desktop/) (enable WSL 2 backend on Windows, restart after install).
+	
+	b. On linux: run:-  chmod +x ./install_docker.sh   followed by running ./install_docker.sh script
+	
+2. Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) inside your Host machine i.e. WSL2 or Linux:
 
 ```bash
-wsl
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
   sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
   sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
+
+# Restart Docker
+sudo service docker restart
 ```
 
 3. Restart Docker Desktop, then verify GPU access:
@@ -330,6 +343,7 @@ python -m venv hf_venv; .\hf_venv\Scripts\Activate.ps1
 sudo apt install -y python3.12 python3.12-venv   # Ubuntu/Debian (macOS: brew install python@3.12)
 python3.12 -m venv hf_venv && source hf_venv/bin/activate
 ```
+> For 7-Zip extraction (`nemo-4b`, `nemo-8b` models), install p7zip first: `sudo apt install -y p7zip-full` (Ubuntu/Debian) or `brew install p7zip` (macOS), then re-run the download script.
 
 **Then (all platforms):**
 ```bash
