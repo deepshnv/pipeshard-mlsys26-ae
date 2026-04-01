@@ -325,8 +325,16 @@ All models must be placed in the `gguf_models/` directory before running any exp
 | `mistral-nemo-minitron-4b-128k-instruct-f16` | [NVIDIA ACE (4B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-4b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
 | `mistral-nemo-minitron-8b-128k-instruct-f16` | [NVIDIA ACE (8B)](https://developer.nvidia.com/downloads/assets/ace/model_zip/mistral-nemo-minitron-8b-128k-instruct_v1.0.0.7z) | Click the URL, extract the `.7z` archive into `gguf_models/` |
 | `Qwen3-30B-A3B-Instruct-2507-q4` | [Hugging Face (Q4_0)](https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf?download=true) | Click the URL to download the single GGUF file, place it in gguf_models/ |
-| `Qwen3-235B-A22B-Instruct-2507-q2_k` | [Hugging Face (Q2_K)](https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/tree/main/Q2_K) | `huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir gguf_models/Qwen3-235B-A22B` |
+| `Qwen3-235B-A22B-Instruct-2507-q2_k` | [Hugging Face (Q2_K)](https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/tree/main/Q2_K) | Download the two split shards into `gguf_models/Qwen3-235B-A22B/`; the download script auto-creates a symlink so llama.cpp loads them natively (no merge needed). See note below. |
 | `Cosmos-Reason1` | [Hugging Face (7B-GGUF)](https://huggingface.co/deepshekhar03/Cosmos-Reason1-7B-GGUF/tree/main) | `huggingface-cli download deepshekhar03/Cosmos-Reason1-7B-GGUF --local-dir gguf_models/cosmos_reason1` |
+
+> **Note on Qwen3-235B (~85 GB):** This model is distributed as two split GGUF shards. The download script downloads both shards and creates a symlink (`Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf` -> shard 1) so that all repro scripts work without merging. llama.cpp automatically discovers and loads all shards from the same directory. If downloading manually, use `wget` instead of `huggingface-cli` to avoid the HF cache doubling disk usage:
+> ```bash
+> cd gguf_models/Qwen3-235B-A22B
+> wget -O Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf "https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/resolve/main/Q2_K/Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf"
+> wget -O Qwen3-235B-A22B-Instruct-2507-Q2_K-00002-of-00002.gguf "https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/resolve/main/Q2_K/Qwen3-235B-A22B-Instruct-2507-Q2_K-00002-of-00002.gguf"
+> ln -s Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf
+> ```
 
 ### Setting Up the Hugging Face CLI
 

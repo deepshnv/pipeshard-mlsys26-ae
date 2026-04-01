@@ -101,46 +101,52 @@ if (ShouldDownload "qwen-30b") {
 if (ShouldDownload "qwen-235b") {
     Write-Host "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
     $qwen235Dir = Join-Path $ModelsRoot "Qwen3-235B-A22B"
-    $qwen235Merged = Join-Path $qwen235Dir "Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf"
+    $qwen235Expected = Join-Path $qwen235Dir "Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf"
+    $shard1Name = "Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf"
+    $shard1Path = Join-Path $qwen235Dir $shard1Name
 
-    if (Test-Path $qwen235Merged) {
+    $isRealFile = (Test-Path $qwen235Expected) -and -not ((Get-Item $qwen235Expected -ErrorAction SilentlyContinue).Attributes -band [IO.FileAttributes]::ReparsePoint)
+    if ($isRealFile) {
         Write-Host "    Merged file already exists, skipping download."
+    } elseif (Test-Path $shard1Path) {
+        Write-Host "    Split shards already downloaded, skipping download."
     } else {
         huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir $qwen235Dir
-        # Flatten: huggingface-cli preserves the Q2_K/ subfolder — move GGUFs up
         $q2kDir = Join-Path $qwen235Dir "Q2_K"
         if (Test-Path $q2kDir) {
             Get-ChildItem -Path $q2kDir -Filter "*.gguf" | Move-Item -Destination $qwen235Dir -Force
             Remove-Item $q2kDir -Recurse -Force -ErrorAction SilentlyContinue
             Write-Host "    Flattened Q2_K/ subfolder into Qwen3-235B-A22B/"
         }
+        Remove-Item (Join-Path $qwen235Dir ".cache") -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
-        # Merge split GGUF shards into a single file (avoids hybrid-loader bug)
-        $shard1 = Get-ChildItem -Path $qwen235Dir -Filter "*00001-of-*.gguf" -ErrorAction SilentlyContinue | Select-Object -First 1
+    # Try merge; if it fails or tool not found, symlink shard 1 (llama.cpp auto-discovers remaining shards)
+    if ((Test-Path $shard1Path) -and -not (Test-Path $qwen235Expected)) {
         $ggufSplit = $null
         foreach ($name in @("llama-gguf-split.exe", "gguf-split.exe")) {
+            $candidate = Join-Path $PSScriptRoot "build\bin\Release\$name"
+            if (Test-Path $candidate) { $ggufSplit = $candidate; break }
             $candidate = Join-Path $PSScriptRoot "build\bin\$name"
             if (Test-Path $candidate) { $ggufSplit = $candidate; break }
         }
-        if (-not $ggufSplit) {
-            $ggufSplit = (Get-Command llama-gguf-split -ErrorAction SilentlyContinue).Source
-        }
-        if (-not $ggufSplit) {
-            $ggufSplit = (Get-Command gguf-split -ErrorAction SilentlyContinue).Source
-        }
-        if ($shard1 -and $ggufSplit) {
+        if (-not $ggufSplit) { $ggufSplit = (Get-Command llama-gguf-split -ErrorAction SilentlyContinue).Source }
+        if (-not $ggufSplit) { $ggufSplit = (Get-Command gguf-split -ErrorAction SilentlyContinue).Source }
+
+        $merged = $false
+        if ($ggufSplit) {
             Write-Host "    Merging split shards into single GGUF (this may take a while) ..."
-            & $ggufSplit --merge $shard1.FullName $qwen235Merged
-            if (Test-Path $qwen235Merged) {
+            & $ggufSplit --merge $shard1Path $qwen235Expected
+            if (Test-Path $qwen235Expected) {
                 Get-ChildItem -Path $qwen235Dir -Filter "*-of-*.gguf" | Remove-Item -Force
-                Write-Host "    Merged -> $qwen235Merged"
-            } else {
-                Write-Host "    [!] Merge failed; keeping split shards." -ForegroundColor Yellow
+                Write-Host "    Merged -> $qwen235Expected"
+                $merged = $true
             }
-        } elseif ($shard1) {
-            Write-Host "    [!] gguf-split / llama-gguf-split not found — skipping merge." -ForegroundColor Yellow
-            Write-Host "        Build it:  cmake --build build --target llama-gguf-split"
-            Write-Host "        Then run:  <gguf-split> --merge $($shard1.FullName) $qwen235Merged"
+        }
+        if (-not $merged) {
+            Write-Host "    Creating symlink (merge skipped/failed; llama.cpp loads split shards natively) ..."
+            New-Item -ItemType SymbolicLink -Path $qwen235Expected -Target $shard1Path -Force | Out-Null
+            Write-Host "    Symlinked $shard1Name -> $(Split-Path $qwen235Expected -Leaf)"
         }
     }
     Write-Host ""

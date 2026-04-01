@@ -97,42 +97,38 @@ fi
 if should_download "qwen-235b"; then
     echo "[>] Downloading Qwen3-235B-A22B-Instruct-2507 Q2_K ..."
     QWEN235_DIR="$MODELS_ROOT/Qwen3-235B-A22B"
-    QWEN235_MERGED="$QWEN235_DIR/Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf"
+    QWEN235_EXPECTED="$QWEN235_DIR/Qwen3-235B-A22B-Instruct-2507-Q2_K.gguf"
+    SHARD1_NAME="Qwen3-235B-A22B-Instruct-2507-Q2_K-00001-of-00002.gguf"
+    SHARD1_PATH="$QWEN235_DIR/$SHARD1_NAME"
 
-    if [ -f "$QWEN235_MERGED" ]; then
+    if [ -f "$QWEN235_EXPECTED" ] && [ ! -L "$QWEN235_EXPECTED" ]; then
         echo "    Merged file already exists, skipping download."
+    elif [ -f "$SHARD1_PATH" ]; then
+        echo "    Split shards already downloaded, skipping download."
     else
-        huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir "$QWEN235_DIR"
-        # Flatten: huggingface-cli preserves the Q2_K/ subfolder — move GGUFs up
-        if [ -d "$QWEN235_DIR/Q2_K" ]; then
-            mv "$QWEN235_DIR/Q2_K"/*.gguf "$QWEN235_DIR/" 2>/dev/null || true
-            rm -rf "$QWEN235_DIR/Q2_K"
-            echo "    Flattened Q2_K/ subfolder into Qwen3-235B-A22B/"
-        fi
-
-        # Merge split GGUF shards into a single file (avoids hybrid-loader bug)
-        SHARD1=$(find "$QWEN235_DIR" -maxdepth 1 -name "*00001-of-*.gguf" 2>/dev/null | head -1)
-        GGUF_SPLIT=""
-        for candidate in "$SCRIPT_DIR/build/bin/llama-gguf-split" "$SCRIPT_DIR/build/bin/gguf-split"; do
-            if [ -f "$candidate" ]; then GGUF_SPLIT="$candidate"; break; fi
-        done
-        if [ -z "$GGUF_SPLIT" ]; then
-            GGUF_SPLIT=$(command -v llama-gguf-split 2>/dev/null || command -v gguf-split 2>/dev/null || true)
-        fi
-        if [ -n "$SHARD1" ] && [ -n "$GGUF_SPLIT" ]; then
-            echo "    Merging split shards into single GGUF (this may take a while) ..."
-            "$GGUF_SPLIT" --merge "$SHARD1" "$QWEN235_MERGED"
-            if [ -f "$QWEN235_MERGED" ]; then
-                rm -f "$QWEN235_DIR"/*-of-*.gguf
-                echo "    Merged -> $QWEN235_MERGED"
-            else
-                echo "    [!] Merge failed; keeping split shards."
+        # Try wget first (no cache overhead), fall back to huggingface-cli
+        SHARD2_NAME="Qwen3-235B-A22B-Instruct-2507-Q2_K-00002-of-00002.gguf"
+        HF_BASE="https://huggingface.co/unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/resolve/main/Q2_K"
+        if command -v wget &>/dev/null; then
+            echo "    Downloading shard 1/2 via wget ..."
+            wget -O "$SHARD1_PATH" "$HF_BASE/$SHARD1_NAME"
+            echo "    Downloading shard 2/2 via wget ..."
+            wget -O "$QWEN235_DIR/$SHARD2_NAME" "$HF_BASE/$SHARD2_NAME"
+        else
+            huggingface-cli download unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF --include "Q2_K/*" --local-dir "$QWEN235_DIR"
+            if [ -d "$QWEN235_DIR/Q2_K" ]; then
+                mv "$QWEN235_DIR/Q2_K"/*.gguf "$QWEN235_DIR/" 2>/dev/null || true
+                rm -rf "$QWEN235_DIR/Q2_K"
+                echo "    Flattened Q2_K/ subfolder into Qwen3-235B-A22B/"
             fi
-        elif [ -n "$SHARD1" ]; then
-            echo "    [!] gguf-split / llama-gguf-split not found — skipping merge."
-            echo "        Build it:  cmake --build build --target llama-gguf-split"
-            echo "        Then run:  <gguf-split> --merge $SHARD1 $QWEN235_MERGED"
         fi
+        rm -rf "$QWEN235_DIR/.cache" 2>/dev/null || true
+    fi
+
+    # Symlink the expected name to shard 1 (llama.cpp auto-discovers remaining shards)
+    if [ -f "$SHARD1_PATH" ] && [ ! -f "$QWEN235_EXPECTED" ]; then
+        ln -s "$SHARD1_NAME" "$QWEN235_EXPECTED"
+        echo "    Symlinked $SHARD1_NAME -> $(basename "$QWEN235_EXPECTED")"
     fi
     echo ""
 fi
