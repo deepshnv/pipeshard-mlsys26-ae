@@ -7,6 +7,11 @@ VLMOpt provides complementary VRAM-reduction optimizations for the vision encode
 
 We have implemented both pipelined sharding and VLMOpt in [llama.cpp tag b6097](https://github.com/deepshnv/pipeshard-mlsys26-ae/blob/main/llama-cpp-README.md
 
+## Archived Artifact (DOI)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19436383.svg)](https://zenodo.org/records/19436383)
+
+A permanent, citable snapshot of this artifact is archived on Zenodo: [https://zenodo.org/records/19436383](https://zenodo.org/records/19436383)
 
 ## Requirements
 
@@ -57,7 +62,9 @@ We have implemented both pipelined sharding and VLMOpt in [llama.cpp tag b6097](
         git --version
         ```
 
-3. *(Optional, Windows)* **Visual Studio 2022+** — needed for the MSVC compiler and CMake generator on Windows. Install from [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) and select the **"Desktop development with C++"** workload during setup.
+3. **Linux dependency:** The reproduction shell scripts require `bc` for floating-point arithmetic. Install it if not already present: `sudo apt-get update && sudo apt-get install -y bc`
+
+4. *(Optional, Windows)* **Visual Studio 2022+** — needed for the MSVC compiler and CMake generator on Windows. Install from [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) and select the **"Desktop development with C++"** workload during setup.
 
 ## Step 1: Build
 
