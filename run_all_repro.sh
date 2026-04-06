@@ -5,6 +5,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+export PIPESHARD_THREADS="${PIPESHARD_THREADS:-16}"
+
 TOF_FLAG=""
 ABS_FLAG=""
 for arg in "$@"; do

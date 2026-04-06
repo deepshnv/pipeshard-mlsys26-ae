@@ -149,6 +149,19 @@ function Run-LlamaCli($cliArgs) {
     return @{ ExitCode = $exitCode; 'TTFT(msec)' = [math]::Round($ttftMs, 1); TPS = [math]::Round($tps, 2); 'E2EL(msec)' = [math]::Round($e2elMs, 1) }
 }
 
+# ── Thread override ──
+$ThreadArgs = @()
+$ProfilerThreadArgs = @()
+$_pt = $env:PIPESHARD_THREADS
+if ($_pt) {
+    $_hw = (Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+    if (-not $_hw) { $_hw = [int]$_pt }
+    $_eff = [int]$_pt; if ($_hw -lt $_eff) { $_eff = $_hw }
+    $ThreadArgs = @("-t", "$_eff")
+    $ProfilerThreadArgs = @("--threads", "$_eff")
+    Write-Host "[*] PIPESHARD_THREADS=$_pt, HW cores=$_hw, using $_eff threads"
+}
+
 # ── Detect GPU VRAM ──────────────────────────────────────────────────────────
 try {
     $smiTotal = [int]((& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
@@ -165,7 +178,7 @@ if (-not $SkipProfiling) {
     Write-Host "============================================="
     $env:GGML_CUDA_PIPELINE_SHARDING = "1"
     $env:GGML_CUDA_REGISTER_HOST = "1"
-    if (Test-Path $ConcurrentProfiler) { & $ConcurrentProfiler --cold --fast }
+    if (Test-Path $ConcurrentProfiler) { & $ConcurrentProfiler --cold --fast @ProfilerThreadArgs }
     if (Test-Path $GpuProfiler) { & $GpuProfiler --cold --fast }
 } else {
     Write-Host "[~] Skipping profiling."
@@ -228,7 +241,7 @@ foreach ($model in $Models) {
                     "-m", $ggufPath, "-c", $ctxTokens, "--file", $ctxFile,
                     "--temp", "0.0", "-no-cnv", "-n", $GenTokens, "--no-display-prompt",
                     "-ub", $ub, "-ngl", $ngl
-                )
+                ) + $ThreadArgs
                 Write-Host "    [${ctxK}K | $vramLabel | ub=$ub] Baseline (ngl=${ngl}${cappedNote}) ..." -NoNewline
                 $baseResult = Run-LlamaCli $baseArgs
                 if ($baseResult.ExitCode -ne 0) {
@@ -247,7 +260,7 @@ foreach ($model in $Models) {
                     "-m", $ggufPath, "-c", $ctxTokens, "--file", $ctxFile,
                     "--temp", "0.0", "-no-cnv", "-n", $GenTokens, "--no-display-prompt",
                     "-ub", $ub, "-mva", $psMva, "-pipe-shard"
-                )
+                ) + $ThreadArgs
                 $psCappedNote = if ($mvaMB -gt $MaxVramMB) { " (capped to $([math]::Floor($MaxVramMB / 1024))G)" } else { "" }
                 Write-Host "    [${ctxK}K | $vramLabel | ub=$ub] PipeShard (mva=${psMva}${psCappedNote}) ..." -NoNewline
                 $psResult = Run-LlamaCli $psArgs

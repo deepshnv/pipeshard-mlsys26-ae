@@ -53,6 +53,19 @@ $NplCtxPairs   = @(
     @{ npl = 64; ctx = 65536 }
 )
 
+# ── Thread override ──
+$ThreadArgs = @()
+$ProfilerThreadArgs = @()
+$_pt = $env:PIPESHARD_THREADS
+if ($_pt) {
+    $_hw = (Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+    if (-not $_hw) { $_hw = [int]$_pt }
+    $_eff = [int]$_pt; if ($_hw -lt $_eff) { $_eff = $_hw }
+    $ThreadArgs = @("-t", "$_eff")
+    $ProfilerThreadArgs = @("--threads", "$_eff")
+    Write-Host "[*] PIPESHARD_THREADS=$_pt, HW cores=$_hw, using $_eff threads"
+}
+
 $env:GGML_CUDA_PIPELINE_SHARDING = "1"
 $env:GGML_CUDA_REGISTER_HOST = "1"
 Write-Host "[*] Environment: GGML_CUDA_PIPELINE_SHARDING=1, GGML_CUDA_REGISTER_HOST=1"
@@ -71,7 +84,7 @@ if (-not $SkipProfiling) {
     Write-Host "============================================="
     if (Test-Path $ConcurrentProfiler) {
         Write-Host "[>] Running concurrent_profiler --cold --fast ..."
-        & $ConcurrentProfiler --cold --fast
+        & $ConcurrentProfiler --cold --fast @ProfilerThreadArgs
     }
     if (Test-Path $GpuProfiler) {
         Write-Host "[>] Running gpu_profiler --cold --fast ..."
@@ -117,7 +130,7 @@ foreach ($mvaMB in $VramBudgetsMB) {
             "-kvu",
             "-mva", $mvaMB,
             "-pipe-shard"
-        )
+        ) + $ThreadArgs
 
         Write-Host ""
         Write-Host "      CMD: llama-batched-bench $($cliArgs -join ' ')" -ForegroundColor Gray

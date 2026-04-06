@@ -49,6 +49,17 @@ NGL_LOOKUP["4096,2048"]=3;   NGL_LOOKUP["4096,8192"]=20;  NGL_LOOKUP["4096,16384
 NGL_LOOKUP["16384,2048"]=3;  NGL_LOOKUP["16384,8192"]=19; NGL_LOOKUP["16384,16384"]=40
 NGL_LOOKUP["65536,2048"]=2;  NGL_LOOKUP["65536,8192"]=15; NGL_LOOKUP["65536,16384"]=32
 
+# ── Thread override ───────────────────────────────────────────────────────────
+THREAD_ARGS=""
+PROFILER_THREAD_ARGS=""
+if [ -n "${PIPESHARD_THREADS:-}" ]; then
+    HW_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$PIPESHARD_THREADS")
+    EFFECTIVE_THREADS=$(( PIPESHARD_THREADS < HW_CORES ? PIPESHARD_THREADS : HW_CORES ))
+    THREAD_ARGS="-t $EFFECTIVE_THREADS"
+    PROFILER_THREAD_ARGS="--threads $EFFECTIVE_THREADS"
+    echo "[*] PIPESHARD_THREADS=$PIPESHARD_THREADS, HW cores=$HW_CORES — using $EFFECTIVE_THREADS threads"
+fi
+
 # ── Detect GPU VRAM ──────────────────────────────────────────────────────────
 if command -v nvidia-smi &>/dev/null; then
     _total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
@@ -61,7 +72,7 @@ if [ "$SKIP_PROFILING" = false ]; then
     echo "Running hardware profilers ..."
     export GGML_CUDA_PIPELINE_SHARDING=1
     export GGML_CUDA_REGISTER_HOST=1
-    [ -f "${BIN_DIR}/concurrent_profiler" ] && "${BIN_DIR}/concurrent_profiler" --cold --fast || true
+    [ -f "${BIN_DIR}/concurrent_profiler" ] && "${BIN_DIR}/concurrent_profiler" --cold --fast $PROFILER_THREAD_ARGS || true
     [ -f "${BIN_DIR}/gpu_profiler" ] && "${BIN_DIR}/gpu_profiler" --cold --fast || true
 else
     echo "[~] Skipping profiling."
@@ -103,7 +114,7 @@ for mva in "${MVA_VALUES[@]}"; do
         base_ok=true
         if "$BATCHED_BENCH" -m "$MODEL_PATH" -c "$ctx" -b 2048 -ub 1024 \
                 -ngl "$ngl" -fa -npp 889,889 -ntg 128 -npl "$npl" \
-                > "$log" 2>&1; then
+                $THREAD_ARGS > "$log" 2>&1; then
             true
         else
             base_ok=false
@@ -130,7 +141,7 @@ for mva in "${MVA_VALUES[@]}"; do
         if "$BATCHED_BENCH" -m "$MODEL_PATH" -c "$ctx" -b 2048 -ub 1024 \
                 -ngl 100 -fa -npp 889,889 -ntg 128 -npl "$npl" \
                 -kvu -mva "$mva" -pipe-shard \
-                > "$log" 2>&1; then
+                $THREAD_ARGS > "$log" 2>&1; then
             true
         else
             ps_ok=false

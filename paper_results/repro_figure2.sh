@@ -297,6 +297,17 @@ resolve_model_gguf() {
     return 1
 }
 
+# ── Thread override ───────────────────────────────────────────────────────────
+THREAD_ARGS=""
+PROFILER_THREAD_ARGS=""
+if [ -n "${PIPESHARD_THREADS:-}" ]; then
+    HW_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$PIPESHARD_THREADS")
+    EFFECTIVE_THREADS=$(( PIPESHARD_THREADS < HW_CORES ? PIPESHARD_THREADS : HW_CORES ))
+    THREAD_ARGS="-t $EFFECTIVE_THREADS"
+    PROFILER_THREAD_ARGS="--threads $EFFECTIVE_THREADS"
+    echo "[*] PIPESHARD_THREADS=$PIPESHARD_THREADS, HW cores=$HW_CORES — using $EFFECTIVE_THREADS threads"
+fi
+
 MAX_VRAM_MB=$((MAX_VRAM_GB * 1024))
 
 if command -v nvidia-smi &>/dev/null; then
@@ -308,7 +319,7 @@ fi
 if [ "$SKIP_PROFILING" = false ]; then
     export GGML_CUDA_PIPELINE_SHARDING=1
     export GGML_CUDA_REGISTER_HOST=1
-    [ -f "${BIN_DIR}/concurrent_profiler" ] && "${BIN_DIR}/concurrent_profiler" --cold --fast
+    [ -f "${BIN_DIR}/concurrent_profiler" ] && "${BIN_DIR}/concurrent_profiler" --cold --fast $PROFILER_THREAD_ARGS
     [ -f "${BIN_DIR}/gpu_profiler" ] && "${BIN_DIR}/gpu_profiler" --cold --fast
 else
     echo "[~] Skipping profiling."
@@ -364,7 +375,7 @@ for i in "${!MODEL_NAMES[@]}"; do
                 unset GGML_CUDA_PIPELINE_SHARDING GGML_CUDA_REGISTER_HOST 2>/dev/null || true
                 printf "    [%sK | %s | ub=%s] Baseline (ngl=%s%s) ..." "$ctx_k" "$vram_label" "$ub" "$ngl" "$capped_note"
                 log=$(mktemp)
-                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -ngl "$ngl" > "$log" 2>&1
+                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -ngl "$ngl" $THREAD_ARGS > "$log" 2>&1
                 _rc=$?
                 if [ "$_rc" -ne 0 ] && [ "$TERMINATE_ON_FAILURE" = true ]; then printf " FAILED\nERROR: Baseline failed (exit %d).\n" "$_rc"; rm -f "$log"; exit 1; fi
                 b_ttft=$(grep -oP "prompt eval time\s*=\s*\K[\d.]+" "$log" || echo "0")
@@ -386,7 +397,7 @@ for i in "${!MODEL_NAMES[@]}"; do
                 fi
                 printf "    [%sK | %s | ub=%s] PipeShard (mva=%s%s) ..." "$ctx_k" "$vram_label" "$ub" "$ps_mva" "$ps_capped"
                 log=$(mktemp)
-                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -mva "$ps_mva" -pipe-shard > "$log" 2>&1
+                "$LLAMA_CLI" -m "$gguf_path" -c "$ctx_tokens" --file "$ctx_file" --temp 0.0 -no-cnv -n "$GEN_TOKENS" --no-display-prompt -ub "$ub" -mva "$ps_mva" -pipe-shard $THREAD_ARGS > "$log" 2>&1
                 _rc=$?
                 if [ "$_rc" -ne 0 ] && [ "$TERMINATE_ON_FAILURE" = true ]; then printf " FAILED\nERROR: PipeShard failed (exit %d).\n" "$_rc"; rm -f "$log"; exit 1; fi
                 p_ttft=$(grep -oP "prompt eval time\s*=\s*\K[\d.]+" "$log" || echo "0")

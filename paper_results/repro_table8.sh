@@ -41,8 +41,8 @@ if [ ! -f "$MTMD_CLI" ]; then
 fi
 
 CR1_DIR="${MODELS_DIR}/cosmos_reason1"
-MODEL_PATH=$(find "$CR1_DIR" -name "Cosmos_Reason1_7B*" ! -name "*mmproj*" 2>/dev/null | head -1)
-MMPROJ_PATH=$(find "$CR1_DIR" -name "mmproj*" 2>/dev/null | head -1)
+MODEL_PATH=$(find "$CR1_DIR" -name "Cosmos_Reason1_7B*.gguf" ! -name "*mmproj*" 2>/dev/null | head -1)
+MMPROJ_PATH=$(find "$CR1_DIR" -name "mmproj*.gguf" 2>/dev/null | head -1)
 
 if [ -z "$MODEL_PATH" ] || [ -z "$MMPROJ_PATH" ]; then
     echo "ERROR: Cosmos-Reason1 model files not found in $CR1_DIR."
@@ -50,6 +50,17 @@ if [ -z "$MODEL_PATH" ] || [ -z "$MMPROJ_PATH" ]; then
 fi
 
 IFS=',' read -ra VRAM_BUDGETS_ARR <<< "$VRAM_BUDGETS"
+
+# ── Thread override ───────────────────────────────────────────────────────────
+THREAD_ARGS=""
+PROFILER_THREAD_ARGS=""
+if [ -n "${PIPESHARD_THREADS:-}" ]; then
+    HW_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$PIPESHARD_THREADS")
+    EFFECTIVE_THREADS=$(( PIPESHARD_THREADS < HW_CORES ? PIPESHARD_THREADS : HW_CORES ))
+    THREAD_ARGS="-t $EFFECTIVE_THREADS"
+    PROFILER_THREAD_ARGS="--threads $EFFECTIVE_THREADS"
+    echo "[*] PIPESHARD_THREADS=$PIPESHARD_THREADS, HW cores=$HW_CORES — using $EFFECTIVE_THREADS threads"
+fi
 
 GEN_TOKENS=100
 PROMPT="Describe this image in under 100 words"
@@ -103,7 +114,7 @@ if [ "$SKIP_PROFILING" = false ]; then
     echo "============================================="
     echo " Running hardware profilers"
     echo "============================================="
-    [ -f "$CONCURRENT_PROFILER" ] && "$CONCURRENT_PROFILER" --cold --fast
+    [ -f "$CONCURRENT_PROFILER" ] && "$CONCURRENT_PROFILER" --cold --fast $PROFILER_THREAD_ARGS
     [ -f "$GPU_PROFILER" ] && "$GPU_PROFILER" --cold --fast
 else
     echo "[~] Skipping profiling."
@@ -133,6 +144,7 @@ for i in "${!RES_LABELS[@]}"; do
 
     base_args=(-m "$MODEL_PATH" --mmproj "$MMPROJ_PATH" -p "$PROMPT" --image "$IMAGE_PATH" -n "$GEN_TOKENS" -cis "$cis")
     [ -n "$ctx_override" ] && base_args+=(-c "$ctx_override")
+    [ -n "$THREAD_ARGS" ] && base_args+=($THREAD_ARGS)
 
     printf "    [Baseline] Running ..."
     log_file=$(mktemp)
@@ -175,6 +187,7 @@ for i in "${!RES_LABELS[@]}"; do
 
         vlm_args=(-m "$MODEL_PATH" --mmproj "$MMPROJ_PATH" -p "$PROMPT" --image "$IMAGE_PATH" -n "$GEN_TOKENS" -cis "$cis" -pipe-shard -mva "$effective_mva" -vto-offload-cpu -vto-tiled-attention -clip-tiled-mb "$effective_tiled")
         [ -n "$ctx_override" ] && vlm_args+=(-c "$ctx_override")
+        [ -n "$THREAD_ARGS" ] && vlm_args+=($THREAD_ARGS)
 
         printf "    [VLMOpt mva=%s (effective %sMB)] Running ..." "$vram_label" "$effective_mva"
         log_file=$(mktemp)

@@ -9,18 +9,23 @@ param(
     [switch]$CompareAbsMetricsToo
 )
 
+if (-not $env:PIPESHARD_THREADS) { $env:PIPESHARD_THREADS = "16" }
+
 $ErrorActionPreference = if ($TerminateOnFailure) { "Stop" } else { "Continue" }
 
 Write-Host "=== Running all reproduction scripts ==="
 if ($TerminateOnFailure) { Write-Host "    (TerminateOnFailure mode: will stop on first error)" }
 Write-Host ""
 
+$tofParam = @{}
+if ($TerminateOnFailure) { $tofParam = @{ TerminateOnFailure = $true } }
+
 $scripts = @(
-    @{ Name = "Table 4";  Cmd = ".\paper_results\repro_table4.ps1 -TerminateOnFailure:`$$TerminateOnFailure" },
-    @{ Name = "Figure 2"; Cmd = ".\paper_results\repro_figure2.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
-    @{ Name = "Table 8";  Cmd = ".\paper_results\repro_table8.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
-    @{ Name = "Table 9";  Cmd = ".\paper_results\repro_table9.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" },
-    @{ Name = "Figure 7"; Cmd = ".\paper_results\repro_figure7.ps1 -SkipProfiling -TerminateOnFailure:`$$TerminateOnFailure" }
+    @{ Name = "Table 4";  Script = ".\paper_results\repro_table4.ps1";  Extra = @{} },
+    @{ Name = "Figure 2"; Script = ".\paper_results\repro_figure2.ps1"; Extra = @{ SkipProfiling = $true } },
+    @{ Name = "Table 8";  Script = ".\paper_results\repro_table8.ps1";  Extra = @{ SkipProfiling = $true } },
+    @{ Name = "Table 9";  Script = ".\paper_results\repro_table9.ps1";  Extra = @{ SkipProfiling = $true } },
+    @{ Name = "Figure 7"; Script = ".\paper_results\repro_figure7.ps1"; Extra = @{ SkipProfiling = $true } }
 )
 
 $total = $scripts.Count
@@ -30,7 +35,9 @@ for ($i = 0; $i -lt $total; $i++) {
     $s = $scripts[$i]
     Write-Host "--- Step $($i+1)/$total`: $($s.Name) ---"
     try {
-        Invoke-Expression $s.Cmd
+        $params = $s.Extra.Clone()
+        foreach ($k in $tofParam.Keys) { $params[$k] = $tofParam[$k] }
+        & $s.Script @params
     } catch {
         Write-Host "  FAILED: $($s.Name) -- $_" -ForegroundColor Red
         $failed += $s.Name

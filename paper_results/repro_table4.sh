@@ -72,6 +72,17 @@ resolve_model_gguf() {
     return 1
 }
 
+# ── Thread override ───────────────────────────────────────────────────────────
+THREAD_ARGS=""
+PROFILER_THREAD_ARGS=""
+if [ -n "${PIPESHARD_THREADS:-}" ]; then
+    HW_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$PIPESHARD_THREADS")
+    EFFECTIVE_THREADS=$(( PIPESHARD_THREADS < HW_CORES ? PIPESHARD_THREADS : HW_CORES ))
+    THREAD_ARGS="-t $EFFECTIVE_THREADS"
+    PROFILER_THREAD_ARGS="--threads $EFFECTIVE_THREADS"
+    echo "[*] PIPESHARD_THREADS=$PIPESHARD_THREADS, HW cores=$HW_CORES — using $EFFECTIVE_THREADS threads"
+fi
+
 # ── Enable pipeline sharding ──────────────────────────────────────────────────
 export GGML_CUDA_PIPELINE_SHARDING=1
 export GGML_CUDA_REGISTER_HOST=1
@@ -92,7 +103,7 @@ if [ "$SKIP_PROFILING" = false ]; then
 
     if [ -f "$CONCURRENT_PROFILER" ]; then
         echo "[>] Running concurrent_profiler --cold --fast ..."
-        "$CONCURRENT_PROFILER" --cold --fast
+        "$CONCURRENT_PROFILER" --cold --fast $PROFILER_THREAD_ARGS
     else
         echo "[!] WARNING: concurrent_profiler not found at $CONCURRENT_PROFILER, skipping."
     fi
@@ -163,6 +174,7 @@ for i in "${!MODEL_NAMES[@]}"; do
                 -ub "$UBATCH" \
                 -mva "$mva_mb" \
                 -pipe-shard \
+                $THREAD_ARGS \
                 > "$log_file" 2>&1; then
 
                 # Parse TTFT from: "prompt eval time = <ms> ms / ..."

@@ -89,6 +89,19 @@ function Resolve-ModelGguf($model) {
     return $files[0].FullName
 }
 
+# ── Thread override ──
+$ThreadArgs = @()
+$ProfilerThreadArgs = @()
+$_pt = $env:PIPESHARD_THREADS
+if ($_pt) {
+    $_hw = (Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+    if (-not $_hw) { $_hw = [int]$_pt }
+    $_eff = [int]$_pt; if ($_hw -lt $_eff) { $_eff = $_hw }
+    $ThreadArgs = @("-t", "$_eff")
+    $ProfilerThreadArgs = @("--threads", "$_eff")
+    Write-Host "[*] PIPESHARD_THREADS=$_pt, HW cores=$_hw, using $_eff threads"
+}
+
 # ── Enable pipeline sharding env vars ─────────────────────────────────────────
 $env:GGML_CUDA_PIPELINE_SHARDING = "1"
 $env:GGML_CUDA_REGISTER_HOST = "1"
@@ -112,7 +125,7 @@ if (-not $SkipProfiling) {
 
     if (Test-Path $ConcurrentProfiler) {
         Write-Host "[>] Running concurrent_profiler --cold --fast ..."
-        & $ConcurrentProfiler --cold --fast
+        & $ConcurrentProfiler --cold --fast @ProfilerThreadArgs
     } else {
         Write-Warning "concurrent_profiler.exe not found at $ConcurrentProfiler, skipping."
     }
@@ -172,7 +185,7 @@ foreach ($model in $Models) {
                 "-ub", $UBatch,
                 "-mva", $mvaMB,
                 "-pipe-shard"
-            )
+            ) + $ThreadArgs
 
             $tps  = "N/A"
             $ttft = "N/A"

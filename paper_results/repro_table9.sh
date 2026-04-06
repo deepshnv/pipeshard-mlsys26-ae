@@ -44,6 +44,17 @@ NPL_CTX_PAIRS=(
     "64:65536"
 )
 
+# ── Thread override ───────────────────────────────────────────────────────────
+THREAD_ARGS=""
+PROFILER_THREAD_ARGS=""
+if [ -n "${PIPESHARD_THREADS:-}" ]; then
+    HW_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$PIPESHARD_THREADS")
+    EFFECTIVE_THREADS=$(( PIPESHARD_THREADS < HW_CORES ? PIPESHARD_THREADS : HW_CORES ))
+    THREAD_ARGS="-t $EFFECTIVE_THREADS"
+    PROFILER_THREAD_ARGS="--threads $EFFECTIVE_THREADS"
+    echo "[*] PIPESHARD_THREADS=$PIPESHARD_THREADS, HW cores=$HW_CORES — using $EFFECTIVE_THREADS threads"
+fi
+
 export GGML_CUDA_PIPELINE_SHARDING=1
 export GGML_CUDA_REGISTER_HOST=1
 echo "[*] Environment: GGML_CUDA_PIPELINE_SHARDING=1, GGML_CUDA_REGISTER_HOST=1"
@@ -56,7 +67,7 @@ fi
 
 if [ "$SKIP_PROFILING" = false ]; then
     echo "Running hardware profilers ..."
-    [ -f "${BIN_DIR}/concurrent_profiler" ] && "${BIN_DIR}/concurrent_profiler" --cold --fast || true
+    [ -f "${BIN_DIR}/concurrent_profiler" ] && "${BIN_DIR}/concurrent_profiler" --cold --fast $PROFILER_THREAD_ARGS || true
     [ -f "${BIN_DIR}/gpu_profiler" ] && "${BIN_DIR}/gpu_profiler" --cold --fast || true
 else
     echo "[~] Skipping profiling."
@@ -100,6 +111,7 @@ for mva in "${MVA_VALUES[@]}"; do
             -kvu \
             -mva "$mva" \
             -pipe-shard \
+            $THREAD_ARGS \
             > "$log" 2>&1
         run_rc=$?
         if [ "$run_rc" -ne 0 ] && [ "$TERMINATE_ON_FAILURE" = true ]; then

@@ -149,6 +149,7 @@ docker run --gpus all -v /path/to/your/gguf_models:/workspace/gguf_models ghcr.i
 docker run --gpus all -it -v /path/to/your/gguf_models:/workspace/gguf_models ghcr.io/deepshnv/pipeshard-mlsys26-ae:v1.0.0 bash
 
 # Inside the container:
+chmod +x download_models.sh run_all_repro.sh paper_results/*.sh
 ./download_models.sh                              # download models (if not mounted)
 ./paper_results/repro_table4.sh                   # similarly run other scripts like repro_table8.sh, repro_table9.sh, repro_figure2.sh, repro_figure7.sh
 ```
@@ -170,6 +171,15 @@ set GGML_CUDA_REGISTER_HOST=1
 $env:GGML_CUDA_PIPELINE_SHARDING = "1"
 $env:GGML_CUDA_REGISTER_HOST = "1"
 ```
+
+> **Optional — CPU thread override:** `PIPESHARD_THREADS` controls the CPU thread count used by all repro scripts and profilers. The `run_all_repro` scripts default it to `16` if unset. The effective value is clamped to `min(PIPESHARD_THREADS, hardware cores)`. To override:
+> ```bash
+> # Linux/macOS
+> export PIPESHARD_THREADS=16
+>
+> # Windows (PowerShell)
+> $env:PIPESHARD_THREADS = "16"
+> ```
 
 ## Step 3: Run Profilers
 

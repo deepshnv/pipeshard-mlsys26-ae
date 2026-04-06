@@ -44,14 +44,27 @@ if (-not (Test-Path $MtmdCli)) {
 }
 
 $CR1Dir = Join-Path $ModelsDir "cosmos_reason1"
-$ModelGguf  = Get-ChildItem -Path $CR1Dir -Filter "Cosmos_Reason1_7B*" -Recurse | Where-Object { $_.Name -notmatch "mmproj" } | Select-Object -First 1
-$MmprojGguf = Get-ChildItem -Path $CR1Dir -Filter "mmproj*" -Recurse | Select-Object -First 1
+$ModelGguf  = Get-ChildItem -Path $CR1Dir -Filter "Cosmos_Reason1_7B*.gguf" -Recurse | Where-Object { $_.Name -notmatch "mmproj" } | Select-Object -First 1
+$MmprojGguf = Get-ChildItem -Path $CR1Dir -Filter "mmproj*.gguf" -Recurse | Select-Object -First 1
 
 if (-not $ModelGguf -or -not $MmprojGguf) {
     Write-Error "Cosmos-Reason1 model files not found in $CR1Dir. Run download_models.ps1 first."
 }
 $ModelPath  = $ModelGguf.FullName
 $MmprojPath = $MmprojGguf.FullName
+
+# ── Thread override ──
+$ThreadArgs = @()
+$ProfilerThreadArgs = @()
+$_pt = $env:PIPESHARD_THREADS
+if ($_pt) {
+    $_hw = (Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+    if (-not $_hw) { $_hw = [int]$_pt }
+    $_eff = [int]$_pt; if ($_hw -lt $_eff) { $_eff = $_hw }
+    $ThreadArgs = @("-t", "$_eff")
+    $ProfilerThreadArgs = @("--threads", "$_eff")
+    Write-Host "[*] PIPESHARD_THREADS=$_pt, HW cores=$_hw, using $_eff threads"
+}
 
 $VramBudgetsMBArr = $VramBudgets -split "," | ForEach-Object { [int]$_.Trim() }
 
@@ -147,7 +160,7 @@ if (-not $SkipProfiling) {
     Write-Host "============================================="
     if (Test-Path $ConcurrentProfiler) {
         Write-Host "[>] concurrent_profiler --cold --fast ..."
-        & $ConcurrentProfiler --cold --fast
+        & $ConcurrentProfiler --cold --fast @ProfilerThreadArgs
     }
     if (Test-Path $GpuProfiler) {
         Write-Host "[>] gpu_profiler --cold --fast ..."
@@ -180,7 +193,7 @@ foreach ($res in $Resolutions) {
         "--image", $ImagePath,
         "-n", $GenTokens,
         "-cis", $res.CIS
-    )
+    ) + $ThreadArgs
     if ($res.CtxOverride) {
         $baseArgs += @("-c", $res.CtxOverride)
     }
@@ -231,7 +244,7 @@ foreach ($res in $Resolutions) {
             "-vto-offload-cpu",
             "-vto-tiled-attention",
             "-clip-tiled-mb", $effectiveTiledMb
-        )
+        ) + $ThreadArgs
         if ($res.CtxOverride) {
             $vlmArgs += @("-c", $res.CtxOverride)
         }

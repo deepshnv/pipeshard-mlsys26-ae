@@ -72,6 +72,19 @@ function Parse-BatchedBenchTPS($output) {
     return "N/A"
 }
 
+# ── Thread override ──
+$ThreadArgs = @()
+$ProfilerThreadArgs = @()
+$_pt = $env:PIPESHARD_THREADS
+if ($_pt) {
+    $_hw = (Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+    if (-not $_hw) { $_hw = [int]$_pt }
+    $_eff = [int]$_pt; if ($_hw -lt $_eff) { $_eff = $_hw }
+    $ThreadArgs = @("-t", "$_eff")
+    $ProfilerThreadArgs = @("--threads", "$_eff")
+    Write-Host "[*] PIPESHARD_THREADS=$_pt, HW cores=$_hw, using $_eff threads"
+}
+
 # ── Detect GPU VRAM ──────────────────────────────────────────────────────────
 try {
     $smiTotal = [int]((& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1).Trim().Split("`n")[0].Trim())
@@ -90,7 +103,7 @@ if (-not $SkipProfiling) {
     $env:GGML_CUDA_REGISTER_HOST = "1"
     if (Test-Path $ConcurrentProfiler) {
         Write-Host "[>] Running concurrent_profiler --cold --fast ..."
-        & $ConcurrentProfiler --cold --fast
+        & $ConcurrentProfiler --cold --fast @ProfilerThreadArgs
     }
     if (Test-Path $GpuProfiler) {
         Write-Host "[>] Running gpu_profiler --cold --fast ..."
@@ -134,7 +147,7 @@ foreach ($mvaMB in $VramBudgetsMB) {
         $baseArgs = @(
             "-m", $ModelPath, "-c", $ctx, "-b", 2048, "-ub", 1024,
             "-ngl", $ngl, "-fa", "-npp", "889,889", "-ntg", 128, "-npl", $npl
-        )
+        ) + $ThreadArgs
 
         Write-Host "    [Baseline ngl=$ngl] ..." -NoNewline
 
@@ -161,7 +174,7 @@ foreach ($mvaMB in $VramBudgetsMB) {
             "-m", $ModelPath, "-c", $ctx, "-b", 2048, "-ub", 1024,
             "-ngl", 100, "-fa", "-npp", "889,889", "-ntg", 128,
             "-npl", $npl, "-kvu", "-mva", $mvaMB, "-pipe-shard"
-        )
+        ) + $ThreadArgs
 
         Write-Host "    [PipeShard mva=$mvaMB -kvu] ..." -NoNewline
 
