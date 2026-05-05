@@ -1947,7 +1947,9 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
 
     // calculate the split points
 	int device_count = n_devices();
-	if(!pipe_shard) {device_count = 1;}							 
+	if(!pipe_shard) {device_count = 1;}
+	// clamp to devices.size() so a CPU-only build (devices empty) doesn't deref devices[0]
+	if (device_count > (int) devices.size()) {device_count = (int) devices.size();}
     bool all_zero = tensor_split == nullptr || std::all_of(tensor_split, tensor_split + device_count, [](float x) { return x == 0.0f; });
     std::vector<float> splits(device_count);
     if (all_zero) {
