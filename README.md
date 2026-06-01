@@ -1,6 +1,6 @@
 # Introduction
 
-This is the README for the artifact evaluation process for our **MLSys26 Paper:** [EFFICIENT, VRAM-CONSTRAINED XLM INFERENCE ON CLIENTS](link arriving soon).
+This is the README for the artifact evaluation process for our **MLSys26 Paper:** [EFFICIENT, VRAM-CONSTRAINED XLM INFERENCE ON CLIENTS](https://mlsys.org/virtual/2026/oral/3802).
 
 We introduce a technique called pipelined sharding to enable running large LLMs (as well as language decoders of VLMs) at user-specified VRAM budgets through a combination of benchmark profile driven CPU-GPU hybrid scheduling and carefully orchestrated pipelined PCIe copies to avoid exposing copy costs. 
 VLMOpt provides complementary VRAM-reduction optimizations for the vision encoder to enable VLMs to handle high-resolution image inference at user-specified VRAM budgets. 
